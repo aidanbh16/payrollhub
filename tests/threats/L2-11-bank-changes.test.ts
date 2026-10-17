@@ -12,14 +12,14 @@ import { POST as idpLoginPOST } from "@/app/mock-idp/[tenantId]/login/route";
 import { mintAsBff } from "@/application/mint-as-bff";
 import { withTenant } from "@/data/db/tenant-scope";
 import { openMailbox } from "@/partners/mock-mail/mail";
-import { SEED_TENANTS, mailboxPasswordFor, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
+import { SEED_TENANTS, mailboxPasswordFor, seededPassword, seededTotpSecret, seededIdpPassword } from "@/scripts/lib/seed";
 import { LINK_TTL_MS, getBankSummary, viewBankChange } from "@/services/bank-account/bank-account-service";
 import { isValidAccountNumber, isValidRoutingNumber } from "@/services/bank-account/validation";
 import { startRun } from "@/services/engine/engine-service";
 import { insertPayrollRun, listEmployees } from "@/services/engine/repository";
 import { RunFailedError } from "@/services/errors";
 import { listUsers } from "@/services/identity/repository";
-import { idsFor, rawSqlite, setupSeededDatabase } from "../helpers/database";
+import { idsFor, rawSqlite, setupSeededDatabase, nextPayDate } from "../helpers/database";
 import { Browser, advance, location, staffLogin, totpNow, useFakeClock } from "../helpers/http";
 
 // L2-11 (Critical): an unverified bank-account change is paid. Defense in depth for L0-01: a taken-over HR Admin
@@ -123,7 +123,7 @@ async function view(link: { changeId: string; token: string }, employeeUserId = 
 async function approvedRun(): Promise<{ runId: string; token: string }> {
   const runId = randomUUID();
   const createdBy = idsFor("acme").hrAdminId;
-  withTenant("acme", (s) => insertPayrollRun(s, { runId, payDate: "2026-11-27", status: "draft", createdBy, approvedBy: null }));
+  withTenant("acme", (s) => insertPayrollRun(s, { runId, payDate: nextPayDate(), status: "draft", createdBy, approvedBy: null }));
   advance(31);
   const res = await approver.json(approvePOST, `/api/tenants/acme/runs/${runId}/approve`, { code: totpNow(seededTotpSecret(acme.approver.email)) }, { tenantId: "acme", runId });
   expect(res.status).toBe(200);
@@ -143,11 +143,11 @@ async function signInAll() {
   approver = new Browser();
   await staffLogin(approver, "acme", acme.approver.email, seededPassword(acme.approver.email), seededTotpSecret(acme.approver.email));
   alice = new Browser();
-  await ssoLogin(alice, "acme", aliceSeed.email, aliceSeed.idpPassword);
+  await ssoLogin(alice, "acme", aliceSeed.email, seededIdpPassword(aliceSeed.email));
   bob = new Browser();
-  await ssoLogin(bob, "acme", bobSeed.email, bobSeed.idpPassword);
+  await ssoLogin(bob, "acme", bobSeed.email, seededIdpPassword(bobSeed.email));
   dana = new Browser();
-  await ssoLogin(dana, "globex", danaSeed.email, danaSeed.idpPassword);
+  await ssoLogin(dana, "globex", danaSeed.email, seededIdpPassword(danaSeed.email));
 }
 
 beforeAll(async () => {
@@ -345,7 +345,7 @@ describe("[L2-11] the mailbox is a separate channel", () => {
       [admin, aliceSeed.email, seededPassword(acme.hrAdmin.email)], // the admin's PayrollHub password
       [admin, aliceSeed.email, mailboxPasswordFor(acme.hrAdmin.email)], // the admin's own mailbox password
       [bob, aliceSeed.email, mailboxPasswordFor(bobSeed.email)], // another employee's mailbox password
-      [alice, aliceSeed.email, aliceSeed.idpPassword], // Alice's IdP password is not her mailbox password
+      [alice, aliceSeed.email, seededIdpPassword(aliceSeed.email)], // Alice's IdP password is not her mailbox password
       [admin, aliceSeed.email, ""],
       [new Browser(), "nobody@acme.test", "anything"],
     ] as const;

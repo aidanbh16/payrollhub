@@ -116,6 +116,22 @@ export async function verifyServiceToken(
 }
 
 /**
+ * For Proxy's rate limits only (RT-03): the tenant a validly signed, unexpired service token is for, or null. It does
+ * not check the endpoint, the grant, or single use, and it never spends the token: the route still verifies it fully.
+ * It lets Proxy refuse an internal request with no valid token before counting it, and count real ones per tenant.
+ */
+export async function peekServiceToken(token: string | undefined): Promise<string | null> {
+  if (!token) return null;
+  try {
+    const audiences = [...new Set(Object.values(SERVICE_ENDPOINTS).map((e) => e.service))];
+    const payload = await verifyJwt("service-token", token, { issuer: ISSUER, audience: audiences, maxTokenAgeSeconds: TTL_SECONDS });
+    return typeof payload.tid === "string" && TENANT_ID.test(payload.tid) ? payload.tid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The check every service entry point starts with. A raw token is verified (and consumed, if single-use). Claims are
  * accepted only if verifyServiceToken produced them in this process for this endpoint and tenant, which lets the
  * /api/internal route wrapper verify once and pass the result on without consuming a single-use token twice.

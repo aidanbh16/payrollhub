@@ -71,6 +71,11 @@ export class Browser {
   get device() {
     return this.jar.get(DEVICE_COOKIE);
   }
+
+  /** This browser's cookies as a Cookie header, for requests built by hand (e.g. straight to Proxy). */
+  get cookieHeader() {
+    return [...this.jar].map(([k, v]) => `${k}=${v}`).join("; ");
+  }
 }
 
 export const location = (res: Response) => new URL(res.headers.get("location") ?? "", ORIGIN).pathname + new URL(res.headers.get("location") ?? "", ORIGIN).search;

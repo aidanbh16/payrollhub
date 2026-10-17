@@ -8,7 +8,7 @@ import { authorizeServiceCall, type ServiceAuth } from "@/services/identity/serv
 import { mintAsEngine } from "@/services/engine/mint-as-engine";
 import { computePay } from "./pay-calc";
 import {
-  dayBefore, findEmployeeByUserId, getPayResult, getPayrollRun, getPayrollRuns, insertPayExceptions, insertPayResults, insertPayrollRun, listEmployees,
+  dayBefore, findEmployeeByUserId, findLiveRunForPayDate, getPayResult, getPayrollRun, getPayrollRuns, insertPayExceptions, insertPayResults, insertPayrollRun, listEmployees,
   listPayExceptions, listPayResults, listPayResultsForEmployee, listPayrollRuns, markRunComputed, markRunFailed, updateDraftRun,
 } from "./repository";
 import { loadRunContent, runContentHash } from "./run-content";
@@ -58,6 +58,8 @@ function checkPayDate(payDate: string, now: Date) {
   }
 }
 
+export const ONE_RUN_PER_PAY_DATE = "A payroll run already exists for this pay date";
+
 /** Creates a draft payroll run. It is scheduled one day before the pay date, which must therefore be after today. */
 export async function createDraftRun(
   auth: ServiceAuth,
@@ -67,6 +69,8 @@ export async function createDraftRun(
   const svc = await authorizeServiceCall(auth, { endpoint: "engine.createRun", tenantId: input.tenantId });
   checkPayDate(input.payDate, now);
   return withTenant(svc.tenantId, (s) => {
+    // RT-01: one live run per pay date, so the same period can never be paid twice.
+    if (findLiveRunForPayDate(s, input.payDate)) throw new ConflictError(ONE_RUN_PER_PAY_DATE);
     const runId = randomUUID();
     insertPayrollRun(s, { runId, payDate: input.payDate, status: "draft", createdBy: input.createdBy, approvedBy: null });
     return toView(getPayrollRun(s, runId)!);
@@ -86,7 +90,10 @@ export async function updateRun(auth: ServiceAuth, input: { tenantId: string; ru
   const svc = await authorizeServiceCall(auth, { endpoint: "engine.updateRun", tenantId: input.tenantId });
   checkPayDate(input.payDate, now);
   return withTenant(svc.tenantId, (s) => {
-    if (!getPayrollRun(s, input.runId)) throw new NotFoundError();
+    const run = getPayrollRun(s, input.runId);
+    if (!run) throw new NotFoundError();
+    if (run.status !== "draft") throw new ConflictError("Only a draft run can be changed");
+    if (findLiveRunForPayDate(s, input.payDate, input.runId)) throw new ConflictError(ONE_RUN_PER_PAY_DATE);
     if (!updateDraftRun(s, input.runId, input.payDate)) throw new ConflictError("Only a draft run can be changed");
     return toView(getPayrollRun(s, input.runId)!);
   });

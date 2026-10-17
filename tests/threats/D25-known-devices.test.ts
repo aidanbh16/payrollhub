@@ -130,11 +130,17 @@ describe("[L1-05] [L0-01 DiD] D25: known devices skip the login-class ceiling", 
     expect(await verdict(withKnown(admin.email, known))).toBe("passed");
 
     // Both steps of sign-in get through: the MFA step from a known device also skips the ceiling...
-    const pending = `__Host-ph_session=acme.${"P".repeat(43)}`;
+    // (A real pending session for the admin: since RT-06 the known device must be known for the pending session's account.)
+    const pendingIn = async (knownCookie?: string) => {
+      const b = new Browser();
+      if (knownCookie) b.jar.set(KNOWN_DEVICE_COOKIE, knownCookie);
+      await b.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: seededPassword(admin.email) });
+      return b.cookieHeader;
+    };
     const mfa = (cookie: string) => formPost("/api/auth/mfa", { code: "123456" }, { cookie });
-    expect(await verdict(mfa(`${pending}; ${KNOWN_DEVICE_COOKIE}=${known}`))).toBe("passed");
+    expect(await verdict(mfa(await pendingIn(known)))).toBe("passed");
     // ...while the MFA step from an unknown device is still held to it.
-    expect(await verdict(mfa(pending))).toBe(429);
-    expect(await verdict(mfa(`${pending}; ${KNOWN_DEVICE_COOKIE}=${"Z".repeat(43)}`))).toBe(429);
+    expect(await verdict(mfa(await pendingIn()))).toBe(429);
+    expect(await verdict(mfa(await pendingIn("Z".repeat(43))))).toBe(429);
   });
 });

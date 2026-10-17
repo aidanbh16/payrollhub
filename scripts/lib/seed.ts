@@ -11,12 +11,11 @@ import { getTenant, insertIdpConfig, insertServiceGrant, insertTenant, insertUse
 import type { ServiceEndpoint, ServiceName } from "@/services/identity/service-tokens";
 import { hashPassword } from "@/services/identity/password";
 import { provisionBank } from "./bank-setup";
-import { mailboxPasswordFor, otpauthLink, readStaffCredential, writeDevCredentials } from "./dev-credentials";
+import { idpPasswordFor, mailboxPasswordFor, otpauthLink, readStaffCredential, writeDevCredentials } from "./dev-credentials";
 
-// Development seed data. Employee IdP passwords here are development-only values documented in the README; none of
-// them protect anything real. Staff passwords and TOTP secrets are not here: they are random per install (see
-// writeCredentials). Routing numbers are publicly listed ABA numbers with valid check
-// digits; account numbers are made up.
+// Development seed data. No credential is here: staff passwords and TOTP secrets, employee IdP passwords, and mailbox
+// passwords are random per install (see writeCredentials). Routing numbers are publicly listed ABA numbers with valid
+// check digits; account numbers are made up.
 
 export interface SeedStaff {
   email: string;
@@ -25,8 +24,6 @@ export interface SeedStaff {
 export interface SeedEmployee {
   email: string;
   fullName: string;
-  /** Password at the tenant's stand-in SSO IdP (D22). Employees have no PayrollHub password. */
-  idpPassword: string;
   payRateCents: number;
   routingNumber: string;
   accountNumber: string;
@@ -49,9 +46,9 @@ export const SEED_TENANTS: SeedTenant[] = [
     hrAdmin: { email: "admin@acme.test" },
     approver: { email: "approver@acme.test" },
     employees: [
-      { email: "alice@acme.test", fullName: "Alice Anders", idpPassword: "Acme-Employee-Dev-2026!", payRateCents: 312_500, routingNumber: "011000015", accountNumber: "730100000101" },
-      { email: "bob@acme.test", fullName: "Bob Brandt", idpPassword: "Acme-Employee-Dev-2026!", payRateCents: 287_500, routingNumber: "021000021", accountNumber: "730100000202" },
-      { email: "carol@acme.test", fullName: "Carol Chen", idpPassword: "Acme-Employee-Dev-2026!", payRateCents: 341_667, routingNumber: "026009593", accountNumber: "730100000303" },
+      { email: "alice@acme.test", fullName: "Alice Anders", payRateCents: 312_500, routingNumber: "011000015", accountNumber: "730100000101" },
+      { email: "bob@acme.test", fullName: "Bob Brandt", payRateCents: 287_500, routingNumber: "021000021", accountNumber: "730100000202" },
+      { email: "carol@acme.test", fullName: "Carol Chen", payRateCents: 341_667, routingNumber: "026009593", accountNumber: "730100000303" },
     ],
   },
   {
@@ -61,9 +58,9 @@ export const SEED_TENANTS: SeedTenant[] = [
     hrAdmin: { email: "admin@globex.test" },
     approver: { email: "approver@globex.test" },
     employees: [
-      { email: "dana@globex.test", fullName: "Dana Diaz", idpPassword: "Globex-Employee-Dev-2026!", payRateCents: 295_000, routingNumber: "121000358", accountNumber: "840200000404" },
-      { email: "eli@globex.test", fullName: "Eli Evans", idpPassword: "Globex-Employee-Dev-2026!", payRateCents: 265_000, routingNumber: "111000025", accountNumber: "840200000505" },
-      { email: "fay@globex.test", fullName: "Fay Fischer", idpPassword: "Globex-Employee-Dev-2026!", payRateCents: 358_333, routingNumber: "122000247", accountNumber: "840200000606" },
+      { email: "dana@globex.test", fullName: "Dana Diaz", payRateCents: 295_000, routingNumber: "121000358", accountNumber: "840200000404" },
+      { email: "eli@globex.test", fullName: "Eli Evans", payRateCents: 265_000, routingNumber: "111000025", accountNumber: "840200000505" },
+      { email: "fay@globex.test", fullName: "Fay Fischer", payRateCents: 358_333, routingNumber: "122000247", accountNumber: "840200000606" },
     ],
   },
 ];
@@ -105,12 +102,15 @@ export const SERVICE_GRANTS: { caller: ServiceName; endpoint: ServiceEndpoint; s
  * README. The file stands in for each person knowing their own.
  */
 function writeCredentials(): {
+  idpPasswords: Map<string, string>;
   staffPasswords: Map<string, string>;
   totpSecrets: Map<string, string>;
   mailboxes: { address: string; password: string }[];
 } {
   const staffEmails = SEED_TENANTS.flatMap((t) => [t.hrAdmin.email, t.approver.email]);
   const staffPasswords = new Map(staffEmails.map((email) => [email, randomBytes(18).toString("base64url")]));
+  // Employee passwords at the stand-in IdP (D22), 144 bits each (RT-02: no install shares a password with another).
+  const idpPasswords = new Map(SEED_TENANTS.flatMap((t) => t.employees).map((e) => [e.email, randomBytes(18).toString("base64url")]));
   const totpSecrets = new Map(staffEmails.map((email) => [email, generateSecret()]));
   const mailboxes = SEED_TENANTS.flatMap((t) => [t.hrAdmin.email, t.approver.email, ...t.employees.map((e) => e.email)]).map((address) => ({
     address,
@@ -127,13 +127,16 @@ function writeCredentials(): {
         otpauth: otpauthLink(t.tenantId, s.email, totpSecrets.get(s.email)!),
       })),
     ),
-    employees: SEED_TENANTS.flatMap((t) => t.employees.map((e) => ({ organization: t.tenantId, email: e.email, idpPassword: e.idpPassword }))),
+    employees: SEED_TENANTS.flatMap((t) => t.employees.map((e) => ({ organization: t.tenantId, email: e.email, idpPassword: idpPasswords.get(e.email)! }))),
     mailboxes,
   });
-  return { staffPasswords, totpSecrets, mailboxes };
+  return { idpPasswords, staffPasswords, totpSecrets, mailboxes };
 }
 
 export { mailboxPasswordFor };
+
+/** A seeded employee's stand-in IdP password for this install, from the development credentials file. */
+export const seededIdpPassword = (email: string): string => idpPasswordFor(email);
 
 /** A seeded staff account's password for this install, from the development credentials file. */
 export const seededPassword = (email: string): string => readStaffCredential(email).password;
@@ -147,7 +150,7 @@ export async function seedDatabase(): Promise<void> {
   const now = new Date();
   provisionSigningKeys();
   await provisionBank();
-  const { staffPasswords, totpSecrets, mailboxes } = writeCredentials();
+  const { idpPasswords, staffPasswords, totpSecrets, mailboxes } = writeCredentials();
   await provisionMailboxes(mailboxes);
   withPlatform((p) => {
     for (const g of SERVICE_GRANTS) {
@@ -160,7 +163,7 @@ export async function seedDatabase(): Promise<void> {
     const approverHash = await hashPassword(staffPasswords.get(t.approver.email)!);
     const idp = await provisionTenantIdp(
       t.tenantId,
-      t.employees.map((e) => ({ email: e.email, subject: ssoSubjectFor(t.tenantId, e.email), password: e.idpPassword })),
+      t.employees.map((e) => ({ email: e.email, subject: ssoSubjectFor(t.tenantId, e.email), password: idpPasswords.get(e.email)! })),
     );
 
     withTenant(t.tenantId, (s) => {

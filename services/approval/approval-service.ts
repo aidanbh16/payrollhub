@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { withTenant, type TenantScope } from "@/data/db/tenant-scope";
 import { activeKeyVersions, signJwtVersioned, verifyJwt } from "@/data/keys/kms";
 import { openVerifiedAccountReader, readVerifiedAccounts } from "@/services/bank-account/bank-account-service";
-import { getPayrollRun } from "@/services/engine/repository";
+import { findLiveRunForPayDate, getPayrollRun } from "@/services/engine/repository";
 import { loadRunContent, runContentHash } from "@/services/engine/run-content";
 import { ApprovalRejectedError, ConflictError, NotFoundError, StepUpRequiredError } from "@/services/errors";
 import { getUser } from "@/services/identity/repository";
@@ -68,6 +68,8 @@ export async function issueApprovalToken(
       if (run.failureReason === "bank_account_changed") {
         throw new ConflictError("This run can no longer be approved: a bank account changed after it was computed. Create a new run.");
       }
+      // RT-01: a failed run frees its pay date for a new run (D35); once one exists, the failed run stays failed.
+      if (findLiveRunForPayDate(s, run.payDate, run.runId)) throw new ConflictError("Another payroll run is live for this pay date");
       if (!reapproveFailedRun(s, input.runId, input.approverId)) throw new ConflictError("Only a draft or failed run can be approved");
     } else if (run.status !== "approved" || run.approvedBy !== input.approverId) {
       throw new ConflictError("Only a draft or failed run can be approved");

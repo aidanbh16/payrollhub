@@ -11,7 +11,7 @@ import { GET as reviewGET } from "@/app/api/tenants/[tenantId]/runs/[runId]/revi
 import { GET as runsGET } from "@/app/api/tenants/[tenantId]/runs/route";
 import { POST as idpLoginPOST } from "@/app/mock-idp/[tenantId]/login/route";
 import { withTenant } from "@/data/db/tenant-scope";
-import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret, seededIdpPassword } from "@/scripts/lib/seed";
 import { insertPayrollRun } from "@/services/engine/repository";
 import { computedRun } from "../helpers/ach";
 import { idsFor, setupSeededDatabase } from "../helpers/database";
@@ -42,9 +42,9 @@ async function signInAll() {
   approver = new Browser();
   await staffLogin(approver, "acme", acme.approver.email, seededPassword(acme.approver.email), seededTotpSecret(acme.approver.email));
   alice = new Browser();
-  await ssoLogin(alice, "acme", aliceSeed.email, aliceSeed.idpPassword);
+  await ssoLogin(alice, "acme", aliceSeed.email, seededIdpPassword(aliceSeed.email));
   bob = new Browser();
-  await ssoLogin(bob, "acme", bobSeed.email, bobSeed.idpPassword);
+  await ssoLogin(bob, "acme", bobSeed.email, seededIdpPassword(bobSeed.email));
 }
 
 beforeAll(async () => {
@@ -118,7 +118,7 @@ describe("[L0-01 DiD] Section 2.1: an employee session is refused by every conso
 
 describe("[L0-01 DiD] Section 2.1: an employee sees only their own pay statements", () => {
   it("another employee's statement id is 'not found', exactly like an id that does not exist", async () => {
-    const runId = await computedRun(approver);
+    const runId = await computedRun(approver, "acme", "2026-11-27");
     const mine = await (await alice.get(myStatementsGET, "/api/tenants/acme/me/pay-statements", { tenantId: "acme" })).json();
     const bobs = await (await bob.get(myStatementsGET, "/api/tenants/acme/me/pay-statements", { tenantId: "acme" })).json();
     const aliceStatement = mine.statements.find((s: { runId: string }) => s.runId === runId);

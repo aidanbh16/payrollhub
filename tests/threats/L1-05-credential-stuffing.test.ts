@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { consume } from "@/edge/rate-limiter";
 import { LIMITS } from "@/edge/route-policy";
+import { setupSeededDatabase } from "../helpers/database";
 import { formPost, idpLogin, staffLogin, times, verdict, verdicts } from "../helpers/edge";
 
 // L1-05 (Critical): a credential-stuffing flood on the login route.
@@ -13,6 +14,9 @@ import { formPost, idpLogin, staffLogin, times, verdict, verdicts } from "../hel
 const FREE = LIMITS.unknownDevice.free;
 const MAX = LIMITS.account.max;
 const fresh = () => `${randomUUID()}@acme.test`;
+
+// Proxy looks pending sessions up at the MFA step (RT-06), so this file needs the seeded database a real install has.
+setupSeededDatabase();
 
 describe("[L1-05] per-account login throttle", () => {
   it("a flood against one account hits the ceiling no matter what IP headers the client sends", async () => {

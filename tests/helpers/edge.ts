@@ -1,5 +1,9 @@
 import { NextRequest } from "next/server";
+import { DEVICE_COOKIE, SESSION_COOKIE } from "@/application/auth/cookie-names";
+import { withTenant } from "@/data/db/tenant-scope";
 import { proxy } from "@/proxy";
+import { listUsers } from "@/services/identity/repository";
+import { TTL, createSession, randomToken } from "@/services/identity/sessions";
 
 // Requests as they reach Proxy, and how to read its verdict. NextResponse.next() marks a request that Proxy let through.
 
@@ -39,3 +43,16 @@ export async function verdicts(requests: (() => NextRequest)[]): Promise<Verdict
 }
 
 export const times = <T>(n: number, f: (i: number) => T) => Array.from({ length: n }, (_, i) => f(i));
+
+/**
+ * A real, MFA-verified session for a seeded user, created directly in the Session table (as a completed sign-in
+ * would), as a Cookie header with its device cookie. For requests sent straight to Proxy. Needs a seeded database.
+ */
+export function signedInCookie(tenantId: string, email: string): string {
+  const deviceId = randomToken();
+  const value = withTenant(tenantId, (s) => {
+    const user = listUsers(s).find((u) => u.email === email)!;
+    return createSession(s, { userId: user.userId, deviceId, mfaVerifiedAt: new Date(), ttlMs: TTL.privileged, now: new Date() });
+  });
+  return `${SESSION_COOKIE}=${value}; ${DEVICE_COOKIE}=${deviceId}`;
+}

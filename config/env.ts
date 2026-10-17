@@ -3,6 +3,10 @@ import { z } from "zod";
 // Every secret, key location, and connection string comes from the environment.
 // Each layer adds its variables here as it is built; see .env.example.
 
+/** The Redis password that .env.example and the README used to print (RT-05): every install knew it. */
+const PUBLISHED_REDIS_PASSWORD = "dev-only-redis-password-change-me";
+const redisPassword = (url: string) => decodeURIComponent(new URL(url).password);
+
 /** Loopback hosts only: service tokens sent to INTERNAL_API_ORIGIN must never leave this machine (DV-36). */
 function isLoopbackOrigin(value: string): boolean {
   const host = new URL(value).hostname;
@@ -11,7 +15,10 @@ function isLoopbackOrigin(value: string): boolean {
 
 const envSchema = z.object({
   DATABASE_PATH: z.string().min(1),
-  REDIS_URL: z.url({ protocol: /^rediss?$/ }),
+  // Generated per install by npm run setup (RT-05); the formerly published development password is refused.
+  REDIS_URL: z
+    .url({ protocol: /^rediss?$/ })
+    .refine((url) => redisPassword(url) !== PUBLISHED_REDIS_PASSWORD, "must not use the published placeholder password (run npm run setup)"),
   // AES-256-GCM key for bank fields, TOTP secrets, and ACH file bodies: 32 random bytes, base64.
   FIELD_ENCRYPTION_KEY: z
     .string()

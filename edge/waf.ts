@@ -6,9 +6,13 @@ import type { Policy } from "./route-policy";
 // turned away before any rate-limit, auth, or application code runs.
 
 const MAX_URL_LENGTH = 2048;
-// Path tricks that should never appear in a legitimate PayrollHub URL: encoded dots, slashes, or backslashes,
-// NUL bytes, raw backslashes, and other control characters.
-const SUSPICIOUS_URL = /%2e|%2f|%5c|%00|\\|[\u0000-\u001f\u007f]/i;
+// Path checks see the URL after the WHATWG URL parser has run (Next.js parses it before Proxy). Dot segments ("..",
+// ".", "%2e%2e", "%2e") are resolved by the URL parser before Proxy runs, so Proxy and the router always see the same
+// path and a dot segment cannot skip a check (RT-09); the parser also turns "\" into "/" and percent-encodes raw
+// control characters. What can still arrive, and is refused here, is the encoded form of things no PayrollHub URL
+// contains: an encoded dot left inside a segment, an encoded slash or backslash, and encoded control characters (NUL
+// included).
+const SUSPICIOUS_PATH = /%2e|%2f|%5c|%[01][0-9a-f]|%7f/i;
 const BODY_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const ALLOWED_CONTENT_TYPES = ["application/x-www-form-urlencoded", "application/json"];
 
@@ -19,7 +23,7 @@ export function inspectRequest(request: NextRequest, policy: Policy): NextRespon
   const url = request.url;
   if (url.length > MAX_URL_LENGTH) return reject(414, "URI too long");
   const rawPath = url.slice(url.indexOf("/", url.indexOf("//") + 2)).split("?")[0];
-  if (SUSPICIOUS_URL.test(rawPath) || rawPath.split("/").includes("..")) return reject(400, "Malformed request");
+  if (SUSPICIOUS_PATH.test(rawPath)) return reject(400, "Malformed request");
 
   if (!policy.methods.includes(request.method)) return reject(405, "Method not allowed", { Allow: policy.methods.join(", ") });
 

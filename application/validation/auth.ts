@@ -19,6 +19,17 @@ export const mfaForm = z.strictObject({
 
 export const emptyForm = z.strictObject({});
 
+/** RT-04 (D46): asking for an unlock link. Like sign-in, the answer never says whether the account exists. */
+export const unlockRequestForm = z.strictObject({
+  organization: text(40).toLowerCase(),
+  email: text(254).toLowerCase(),
+});
+
+/** RT-04 (D46): opening an unlock link; the token comes from the link's fragment, posted in the body. */
+export const unlockConfirmBody = z.strictObject({
+  token: z.string().max(64),
+});
+
 export const ssoStartQuery = z.strictObject({
   organization: text(40).toLowerCase(),
 });

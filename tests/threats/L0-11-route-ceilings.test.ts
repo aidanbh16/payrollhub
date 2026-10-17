@@ -1,11 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { LIMITS } from "@/edge/route-policy";
-import { formPost, get, idpLogin, staffLogin, times, verdict, verdicts } from "../helpers/edge";
+import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { mintServiceToken } from "@/services/identity/service-tokens";
+import { setupSeededDatabase } from "../helpers/database";
+import { formPost, get, idpLogin, signedInCookie, staffLogin, times, verdict, verdicts } from "../helpers/edge";
 
 // L0-11 (High): each route class has its own ceiling across all clients, so flooding one class (here, login) cannot
 // starve the others (Assignment 5, Section 2.2: "a flood against the login route cannot throttle payroll approval").
 // This is its own file, so the login ceiling starts unused.
+
+// Signed-in and service requests are only counted (and only admitted) with a real session or token (RT-03).
+setupSeededDatabase();
 
 describe("[L0-11] per-class ceilings", () => {
   it("a flood that exhausts the login ceiling leaves API, money, and page routes working", async () => {
@@ -15,9 +21,11 @@ describe("[L0-11] per-class ceilings", () => {
     expect(flood.filter((r) => r === "passed")).toHaveLength(ceiling);
     expect(flood.slice(-5)).toEqual(times(5, () => 429));
     expect(await verdict(idpLogin("acme", `${randomUUID()}@acme.test`))).toBe(429); // same class: login
-    expect(await verdict(get("/api/admin/me", { cookie: "__Host-ph_session=x" }))).toBe("passed");
-    expect(await verdict(get(`/api/internal/engine/tenants/acme/runs/${randomUUID()}`))).toBe("passed");
-    expect(await verdict(get("/admin", { cookie: "__Host-ph_session=x" }))).toBe("passed");
+    const admin = signedInCookie("acme", SEED_TENANTS[0].hrAdmin.email);
+    const token = await mintServiceToken({ caller: "bff", endpoint: "engine.getRun", tenantId: "acme" });
+    expect(await verdict(get("/api/admin/me", { cookie: admin }))).toBe("passed");
+    expect(await verdict(get(`/api/internal/engine/tenants/acme/runs/${randomUUID()}`, { authorization: `Bearer ${token}` }))).toBe("passed");
+    expect(await verdict(get("/admin", { cookie: admin }))).toBe("passed");
     expect(await verdict(formPost("/api/auth/logout", {}))).toBe("passed");
   });
 });

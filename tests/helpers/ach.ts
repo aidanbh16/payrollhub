@@ -8,7 +8,7 @@ import { SEED_TENANTS, seededTotpSecret } from "@/scripts/lib/seed";
 import { disburseRun } from "@/services/ach/ach-service";
 import { startRun } from "@/services/engine/engine-service";
 import { insertPayrollRun } from "@/services/engine/repository";
-import { idsFor, rawSqlite } from "./database";
+import { idsFor, nextPayDate, rawSqlite } from "./database";
 import { advance, totpNow, type Browser } from "./http";
 
 /** Starts the stand-in bank on this test file's BANK_URL port, with this file's certificates and bank directory. */
@@ -22,10 +22,10 @@ export function startBank(options: { serverCert?: { cert: string; key: string } 
 }
 
 /** A run created by the HR Admin, approved by the approver (fresh TOTP), and computed by Payroll Engine. */
-export async function computedRun(approver: Browser, tenantId = "acme"): Promise<string> {
+export async function computedRun(approver: Browser, tenantId = "acme", payDate = nextPayDate()): Promise<string> {
   const runId = randomUUID();
   const createdBy = idsFor(tenantId).hrAdminId;
-  withTenant(tenantId, (s) => insertPayrollRun(s, { runId, payDate: "2026-11-27", status: "draft", createdBy, approvedBy: null }));
+  withTenant(tenantId, (s) => insertPayrollRun(s, { runId, payDate, status: "draft", createdBy, approvedBy: null }));
   advance(31);
   const secret = seededTotpSecret(SEED_TENANTS.find((t) => t.tenantId === tenantId)!.approver.email);
   const res = await approver.json(approvePOST, `/api/tenants/${tenantId}/runs/${runId}/approve`, { code: totpNow(secret) }, { tenantId, runId });

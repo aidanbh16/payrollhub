@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 import { LIMITS } from "@/edge/route-policy";
-import { ORIGIN, formPost, get, idpLogin, staffLogin, times, verdict, verdicts } from "../helpers/edge";
+import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { setupSeededDatabase } from "../helpers/database";
+import { ORIGIN, formPost, get, idpLogin, signedInCookie, staffLogin, times, verdict, verdicts } from "../helpers/edge";
 
 // L0-11 (High): a platform-wide outage on a pay date.
 // Primary control (local stand-in for the WAF, D8): Proxy rejects malformed and oversized requests from their headers
@@ -24,6 +26,9 @@ function trackedBody(bytes: number) {
   );
   return { state, stream };
 }
+
+// Proxy looks sessions up before counting (RT-03), so this file needs the seeded database a real install has.
+setupSeededDatabase();
 
 describe("[L0-11] request filtering before any body is read", () => {
   it("an oversized body is rejected with 413 and never read", async () => {
@@ -74,7 +79,7 @@ describe("[L0-11] limits are independent per route", () => {
     await verdicts(times(LIMITS.account.max + 1, () => () => staffLogin(email)));
     expect(await verdict(staffLogin(email))).toBe(429);
     expect(await verdict(idpLogin("acme", email))).toBe("passed");
-    expect(await verdict(get("/api/admin/me", { cookie: "__Host-ph_session=x" }))).toBe("passed");
+    expect(await verdict(get("/api/admin/me", { cookie: signedInCookie("acme", SEED_TENANTS[0].hrAdmin.email) }))).toBe("passed");
     expect(await verdict(get("/login"))).toBe("passed");
     expect(await verdict(formPost("/api/auth/logout", {}))).toBe("passed");
   });

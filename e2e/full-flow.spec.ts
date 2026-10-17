@@ -221,6 +221,7 @@ test("[L2-01 DiD] [L0-01 DiD] security headers are present, and the CSP blocks a
   expect(h["content-security-policy"]).toContain("frame-ancestors 'none'");
   expect(h["content-security-policy"]).not.toMatch(/unsafe-inline|unsafe-eval|strict-dynamic/);
   expect(h).toMatchObject({ "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer", "cache-control": "no-store" });
+  expect(h["x-powered-by"]).toBeUndefined(); // RT-11
   expect((await page.request.get("/api/tenants/acme/runs")).headers()["cache-control"]).toBe("no-store");
   // Every script the page itself rendered carries the nonce.
   expect(await page.$$eval("script", (els) => els.filter((e) => !e.nonce).length)).toBe(0);

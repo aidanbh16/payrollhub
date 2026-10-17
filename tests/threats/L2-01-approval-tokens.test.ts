@@ -11,14 +11,14 @@ import { SESSION_COOKIE } from "@/application/auth/cookie-names";
 import { verifySession } from "@/application/auth/dal";
 import { withTenant } from "@/data/db/tenant-scope";
 import { rotateSigningKey, signJwtVersioned } from "@/data/keys/kms";
-import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret, seededIdpPassword } from "@/scripts/lib/seed";
 import { issueApprovalToken, verifyApprovalToken } from "@/services/approval/approval-service";
 import { mintAsBff } from "@/application/mint-as-bff";
 import { startRun } from "@/services/engine/engine-service";
 import { getPayrollRun, insertPayrollRun } from "@/services/engine/repository";
 import { ApprovalRejectedError, ConflictError, StepUpRequiredError } from "@/services/errors";
 import { stepUp } from "@/services/identity/step-up";
-import { idsFor, rawSqlite, setupSeededDatabase } from "../helpers/database";
+import { idsFor, rawSqlite, setupSeededDatabase, nextPayDate } from "../helpers/database";
 import { Browser, advance, staffLogin, totpNow, useFakeClock } from "../helpers/http";
 
 // L2-01 (High): a captured approval token replayed to launch an unauthorized payroll run.
@@ -36,7 +36,7 @@ let globexApprover: Browser;
 function newDraftRun(tenantId = "acme"): string {
   const runId = randomUUID();
   const { hrAdminId } = idsFor(tenantId);
-  withTenant(tenantId, (s) => insertPayrollRun(s, { runId, payDate: "2026-11-27", status: "draft", createdBy: hrAdminId, approvedBy: null }));
+  withTenant(tenantId, (s) => insertPayrollRun(s, { runId, payDate: nextPayDate(), status: "draft", createdBy: hrAdminId, approvedBy: null }));
   return runId;
 }
 
@@ -143,7 +143,7 @@ describe("[L2-01 DiD] issuing a token requires a fresh MFA step-up", () => {
     expect((await approve(admin, runId, { secret: seededTotpSecret(acme.hrAdmin.email) })).status).toBe(403);
 
     const employee = new Browser();
-    const idp = await employee.post(idpLoginPOST, "/mock-idp/acme/login", { email: "alice@acme.test", password: acme.employees[0].idpPassword }, { tenantId: "acme" });
+    const idp = await employee.post(idpLoginPOST, "/mock-idp/acme/login", { email: "alice@acme.test", password: seededIdpPassword(acme.employees[0].email) }, { tenantId: "acme" });
     const assertion = (await idp.text()).match(/name="assertion" value="([^"]+)"/)![1];
     await employee.post(ssoCallbackPOST, "/api/auth/sso/acme/callback", { assertion }, { tenantId: "acme" });
     expect((await approve(employee, runId)).status).toBe(403);

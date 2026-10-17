@@ -15,7 +15,7 @@ import { insertVerifiedAccount, listVerifiedAccounts, retireVerifiedAccounts } f
 import { insertPayrollRun, listPayResults } from "@/services/engine/repository";
 import { BankUnavailableError, ConflictError, RunFailedError } from "@/services/errors";
 import { batchRows, computedRun, disburse, runStatus, startBank } from "../helpers/ach";
-import { idsFor, rawSqlite, setupSeededDatabase } from "../helpers/database";
+import { idsFor, rawSqlite, setupSeededDatabase, nextPayDate } from "../helpers/database";
 import { Browser, advance, staffLogin, totpNow, useFakeClock } from "../helpers/http";
 
 // L2-13 (High): a missing idempotency key double-submits the ACH batch and double-pays.
@@ -107,7 +107,7 @@ describe("[L2-13] only a computed run, built from its pay results", () => {
   it("refuses a run that is not computed, creating nothing", async () => {
     const draft = randomUUID();
     const { hrAdminId } = idsFor("acme");
-    withTenant("acme", (s) => insertPayrollRun(s, { runId: draft, payDate: "2026-11-27", status: "draft", createdBy: hrAdminId, approvedBy: null }));
+    withTenant("acme", (s) => insertPayrollRun(s, { runId: draft, payDate: nextPayDate(), status: "draft", createdBy: hrAdminId, approvedBy: null }));
     await expect(disburse(draft)).rejects.toThrow(new ConflictError("Only a computed run can be sent to the bank"));
 
     advance(31);

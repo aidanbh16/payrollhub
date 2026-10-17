@@ -9,7 +9,7 @@ import { SESSION_COOKIE } from "@/application/auth/cookie-names";
 import { verifySession } from "@/application/auth/dal";
 import { withTenant } from "@/data/db/tenant-scope";
 import { LOGIN_ROUTES } from "@/edge/login-routes";
-import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret, seededIdpPassword } from "@/scripts/lib/seed";
 import { findUserByEmail } from "@/services/identity/repository";
 import { TTL, createSession, parseSessionCookie, readSession, sha256 } from "@/services/identity/sessions";
 import { stepUp } from "@/services/identity/step-up";
@@ -38,7 +38,7 @@ async function signedInAdmin() {
 
 async function signedInEmployee() {
   const browser = new Browser();
-  const idp = await browser.post(idpLoginPOST, "/mock-idp/acme/login", { email: "alice@acme.test", password: acme.employees[0].idpPassword }, { tenantId: "acme" });
+  const idp = await browser.post(idpLoginPOST, "/mock-idp/acme/login", { email: "alice@acme.test", password: seededIdpPassword(acme.employees[0].email) }, { tenantId: "acme" });
   const assertion = (await idp.text()).match(/name="assertion" value="([^"]+)"/)![1];
   await browser.post(ssoCallbackPOST, "/api/auth/sso/acme/callback", { assertion }, { tenantId: "acme" });
   return browser;
@@ -243,18 +243,19 @@ describe("[L0-01 DiD] generic login failures", () => {
   });
 
   it("step 1 takes similar time whether the organization, email, or password was wrong", async () => {
-    const time = async (form: Record<string, string>) => {
-      const samples: number[] = [];
-      for (let i = 0; i < 3; i++) {
+    const correct = { organization: "acme", email: admin.email, password: seededPassword(admin.email) };
+    const forms = [correct, ...Object.values(attempts())];
+    // Three rounds, each timing every path once: the paths take turns, so a change in machine load (other test files
+    // running in parallel) affects them all alike instead of whichever path happened to be measured last.
+    const samples = forms.map(() => [] as number[]);
+    for (let round = 0; round < 3; round++) {
+      for (const [i, form] of forms.entries()) {
         const start = performance.now();
         await new Browser().post(loginPOST, "/api/auth/login", form);
-        samples.push(performance.now() - start);
+        samples[i].push(performance.now() - start);
       }
-      return Math.min(...samples);
-    };
-    const correct = { organization: "acme", email: admin.email, password: seededPassword(admin.email) };
-    const durations = [await time(correct)];
-    for (const form of Object.values(attempts())) durations.push(await time(form));
+    }
+    const durations = samples.map((s) => Math.min(...s));
     // Every path runs exactly one scrypt verification (~tens of ms), so no path is several times faster.
     expect(Math.max(...durations) / Math.min(...durations)).toBeLessThan(2);
   });

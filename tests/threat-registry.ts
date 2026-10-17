@@ -22,8 +22,11 @@ export const THREATS: Threat[] = [
     id: "L1-05",
     rank: 1,
     threat: "Credential-stuffing flood on the API Gateway login route",
-    primary: ["proxy.ts", "edge/rate-limiter.ts", "edge/login-routes.ts", "edge/route-policy.ts", "edge/known-devices.ts", "edge/client-ip.ts"],
-    defenseInDepth: [],
+    primary: [
+      "proxy.ts", "edge/rate-limiter.ts", "edge/login-routes.ts", "edge/route-policy.ts", "edge/known-devices.ts", "edge/client-ip.ts",
+      "edge/unlock.ts", "services/identity/unlock.ts", "app/api/auth/unlock/",
+    ],
+    defenseInDepth: ["scripts/setup.ts", "config/env.ts", "docker-compose.yml"],
   },
   {
     id: "L1-14",
@@ -84,7 +87,7 @@ export const THREATS: Threat[] = [
     id: "L2-13",
     rank: 8,
     threat: "Missing idempotency key double-submits the ACH batch and double-pays",
-    primary: ["services/ach/ach-service.ts", "migrations/0000_tables.sql", "migrations/0013_ach_integrity.sql"],
+    primary: ["services/ach/ach-service.ts", "migrations/0000_tables.sql", "migrations/0013_ach_integrity.sql", "migrations/0015_one_live_run_per_pay_date.sql", "services/engine/engine-service.ts"],
     defenseInDepth: ["partners/mock-bank/server.ts", "app/api/tenants/[tenantId]/runs/[runId]/disburse/route.ts"],
   },
   {
@@ -111,7 +114,7 @@ export const THREATS: Threat[] = [
     id: "L0-11",
     rank: 10,
     threat: "Platform-wide PayrollHub outage on a pay date",
-    primary: ["edge/waf.ts", "edge/route-policy.ts", "proxy.ts", "next.config.ts"],
+    primary: ["edge/waf.ts", "edge/route-policy.ts", "proxy.ts", "next.config.ts", "edge/rate-limiter.ts", "services/identity/service-tokens.ts"],
     defenseInDepth: ["services/engine/engine-service.ts", "data/db/tables.ts", "edge/rate-limiter.ts"],
   },
   {
@@ -126,7 +129,7 @@ export const THREATS: Threat[] = [
     rank: 12,
     threat: "Forged SSO assertion signs in as any employee of a tenant",
     primary: ["services/identity/sso.ts", "app/api/auth/sso/[tenantId]/callback/route.ts"],
-    defenseInDepth: ["services/identity/repository.ts", "partners/mock-idp/idp.ts"],
+    defenseInDepth: ["services/identity/repository.ts", "partners/mock-idp/idp.ts", "scripts/lib/seed.ts", "package.json"],
   },
   {
     id: "L2-11",

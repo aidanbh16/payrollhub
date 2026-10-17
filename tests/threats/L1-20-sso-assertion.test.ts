@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { POST as ssoCallbackPOST } from "@/app/api/auth/sso/[tenantId]/callback/route";
 import { POST as idpLoginPOST } from "@/app/mock-idp/[tenantId]/login/route";
 import { idpAudience, idpIssuer } from "@/partners/mock-idp/idp";
-import { SEED_TENANTS, ssoSubjectFor } from "@/scripts/lib/seed";
+import { SEED_TENANTS, ssoSubjectFor, seededIdpPassword } from "@/scripts/lib/seed";
 import { readSession } from "@/services/identity/sessions";
 import { signInWithSso, verifySsoAssertion } from "@/services/identity/sso";
 import { rawSqlite, setupSeededDatabase } from "../helpers/database";
@@ -171,7 +171,7 @@ describe("[L1-20 DiD] an assertion can be used only once", () => {
 describe("[L1-20] end to end through the stand-in IdP and the callback route", () => {
   it("IdP sign-in posts a signed assertion that the callback turns into an employee session", async () => {
     const browser = new Browser();
-    const idp = await browser.post(idpLoginPOST, "/mock-idp/acme/login", { email: "alice@acme.test", password: SEED_TENANTS[0].employees[0].idpPassword }, { tenantId: "acme" });
+    const idp = await browser.post(idpLoginPOST, "/mock-idp/acme/login", { email: "alice@acme.test", password: seededIdpPassword(SEED_TENANTS[0].employees[0].email) }, { tenantId: "acme" });
     const html = await idp.text();
     expect(html).toContain('action="/api/auth/sso/acme/callback"');
     const assertion = html.match(/name="assertion" value="([^"]+)"/)![1];

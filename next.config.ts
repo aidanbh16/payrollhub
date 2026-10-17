@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
     // route limit (all far below this) by Content-Length, so a large upload is never buffered or silently truncated.
     proxyClientMaxBodySize: "64kb",
   },
+  // No "X-Powered-By: Next.js" on responses (RT-11): it only helps an attacker fingerprint the stack.
+  poweredByHeader: false,
   // Every response: no Referer leaks (confirmation links carry a token in the URL), no MIME sniffing, no framing.
   async headers() {
     return [

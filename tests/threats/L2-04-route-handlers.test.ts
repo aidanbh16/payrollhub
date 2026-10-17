@@ -5,7 +5,7 @@ import { POST as createRunPOST } from "@/app/api/tenants/[tenantId]/runs/route";
 import { POST as idpLoginPOST } from "@/app/mock-idp/[tenantId]/login/route";
 import { POST as ssoCallbackPOST } from "@/app/api/auth/sso/[tenantId]/callback/route";
 import { withTenant } from "@/data/db/tenant-scope";
-import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret, seededIdpPassword } from "@/scripts/lib/seed";
 import { getPayrollRun } from "@/services/engine/repository";
 import { rawSqlite, setupSeededDatabase } from "../helpers/database";
 import { Browser, advance, staffLogin, useFakeClock } from "../helpers/http";
@@ -93,7 +93,7 @@ describe("[L2-04] the tenant comes only from the verified session", () => {
 
     advance(31);
     const employee = new Browser();
-    const idp = await employee.post(idpLoginPOST, "/mock-idp/acme/login", { email: "alice@acme.test", password: acme.employees[0].idpPassword }, { tenantId: "acme" });
+    const idp = await employee.post(idpLoginPOST, "/mock-idp/acme/login", { email: "alice@acme.test", password: seededIdpPassword(acme.employees[0].email) }, { tenantId: "acme" });
     const assertion = (await idp.text()).match(/name="assertion" value="([^"]+)"/)![1];
     await employee.post(ssoCallbackPOST, "/api/auth/sso/acme/callback", { assertion }, { tenantId: "acme" });
     expect((await employee.json(createRunPOST, "/api/tenants/acme/runs", { payDate: PAY_DATE }, { tenantId: "acme" })).status).toBe(403);

@@ -1,7 +1,10 @@
-import { LOGIN_ROUTES, type LoginRoute } from "./login-routes";
+import { LOGIN_ROUTES, UNLOCK_REQUEST_LIMIT, type LoginRoute } from "./login-routes";
 
 // Edge policy (Assignment 5, Section 2.2): which class each request belongs to, how big its body may be, and its
 // rate limits. Limits are independent per class, so a flood on one class (e.g. login) never consumes another's budget.
+// Within a class (RT-03, D45): a request that needs a session or a service token is checked for one before anything
+// is counted, and signed-in traffic is counted per tenant and per session, never against a counter that anonymous
+// traffic can fill. Only anonymous routes (sign-in, public pages, the stand-ins) share a global ceiling per class.
 
 export type RouteClass = "login" | "money" | "api" | "page";
 
@@ -52,13 +55,34 @@ export const LIMITS = {
   knownDevice: { max: 20, windowMs: 15 * MINUTE } satisfies Limit,
   /** D25, staff sign-in from any other device: 5 immediate attempts, then 1 s, 2 s, 4 s ... up to 15 min apart. */
   unknownDevice: { free: 5, baseMs: 1000, maxMs: 15 * MINUTE, idleMs: 15 * MINUTE },
-  /** L0-11: ceiling per route class across all clients, so one class cannot exhaust the platform. */
+  /**
+   * L0-11: ceiling per route class for anonymous traffic (sign-in steps, public pages and API, the stand-ins), so
+   * one class cannot exhaust the platform. Money routes are never anonymous (RT-03); the entry is unused.
+   */
   classCeiling: {
     login: { max: 300, windowMs: MINUTE },
     money: { max: 120, windowMs: MINUTE },
     api: { max: 3000, windowMs: MINUTE },
     page: { max: 6000, windowMs: MINUTE },
   } satisfies Record<RouteClass, Limit>,
+  /** RT-03: ceiling per tenant per class for signed-in (or service-token) traffic: one tenant cannot starve another. */
+  tenantCeiling: {
+    login: { max: 300, windowMs: MINUTE },
+    money: { max: 120, windowMs: MINUTE },
+    api: { max: 3000, windowMs: MINUTE },
+    page: { max: 6000, windowMs: MINUTE },
+  } satisfies Record<RouteClass, Limit>,
+  /** RT-03: per signed-in session per class: one session cannot use up its tenant's ceiling. */
+  perSession: {
+    login: { max: 30, windowMs: MINUTE },
+    money: { max: 30, windowMs: MINUTE },
+    api: { max: 300, windowMs: MINUTE },
+    page: { max: 300, windowMs: MINUTE },
+  } satisfies Record<RouteClass, Limit>,
+  /** RT-04 (D46): unlock-link requests per targeted account (applied through LOGIN_ROUTES' staff-unlock entry). */
+  unlockRequest: UNLOCK_REQUEST_LIMIT,
+  /** RT-04 (D46): staff sign-in from a device that opened an unlock link for this account: a fresh budget. */
+  unlockedDevice: { max: 10, windowMs: 15 * MINUTE } satisfies Limit,
   /** Per client IP per class. Applied only when TRUSTED_CLIENT_IP_HEADER is configured (see edge/client-ip.ts). */
   perIp: {
     login: { max: 30, windowMs: 5 * MINUTE },

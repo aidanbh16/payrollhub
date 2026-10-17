@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import type { TenantInsert, TenantScope } from "@/data/db/tenant-scope";
 import { vEmployee, vPayException, vPayResult, vPayrollRun } from "@/data/db/views";
 
@@ -35,6 +35,18 @@ export function getPayrollRun(s: TenantScope, runId: string) {
 
 export function listPayrollRuns(s: TenantScope) {
   return s.read(vPayrollRun).all();
+}
+
+/**
+ * Another live run (any status except failed) for this pay date, if there is one: a tenant has at most one per pay date
+ * (RT-01; the partial unique index payroll_run_one_live_per_pay_date is the database backstop).
+ */
+export function findLiveRunForPayDate(s: TenantScope, payDate: string, exceptRunId?: string) {
+  return s
+    .read(vPayrollRun)
+    .where(and(eq(vPayrollRun.payDate, payDate), ne(vPayrollRun.status, "failed")))
+    .all()
+    .find((r) => r.runId !== exceptRunId);
 }
 
 export function insertPayResults(s: TenantScope, values: TenantInsert<"payResult">[]) {

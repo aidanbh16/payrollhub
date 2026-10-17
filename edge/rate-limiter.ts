@@ -67,32 +67,54 @@ for i, key in ipairs(KEYS) do
 end
 return out`;
 
-const TIMEOUT_MS = 300;
-// After a failure, skip Redis for a moment instead of opening a new connection attempt per request.
+// How long one request waits for Redis. A slower reply fails that request only (fail-closed routes answer 503 with
+// Retry-After); it does not mean Redis is down (RT-03), so it never opens the breaker below.
+export const LIMITER_TIMEOUT_MS = 1500;
+// After Redis is unreachable (connection refused, closed, or not connecting), skip it for a moment instead of opening a
+// new connection attempt per request (D20).
 const BACKOFF_MS = 2000;
 const breaker = globalThis as unknown as { payrollhubLimiterDownUntil?: number };
 
+class LimiterTimeout extends Error {}
+
 function withTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     promise,
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("rate limiter timeout")), TIMEOUT_MS)),
-  ]);
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new LimiterTimeout("rate limiter timeout")), LIMITER_TIMEOUT_MS);
+    }),
+  ]).finally(() => clearTimeout(timer));
 }
 
 type Redis = Awaited<ReturnType<typeof getRedis>>;
 
-/** Runs a Redis call for the edge layer with a timeout, a short circuit breaker, and recovery after failure. */
+/**
+ * Runs a Redis call for the edge layer with a timeout, a short circuit breaker, and recovery after failure. Only an
+ * unreachable Redis opens the breaker for everyone (D20); a slow reply under load fails just this call (RT-03).
+ */
 export async function edgeRedis<T>(call: (redis: Redis, prefix: string) => Promise<T>): Promise<T> {
   if ((breaker.payrollhubLimiterDownUntil ?? 0) > Date.now()) throw new RateLimiterUnavailable("rate limiter backing off");
+  let redis: Redis;
   try {
-    const redis = await withTimeout(getRedis());
+    redis = await withTimeout(getRedis());
+  } catch (err) {
+    return down(err);
+  }
+  try {
     return await withTimeout(call(redis, env().RATE_LIMIT_PREFIX));
   } catch (err) {
-    breaker.payrollhubLimiterDownUntil = Date.now() + BACKOFF_MS;
-    // A timed-out or failed client may be stuck; start fresh on the next attempt after the backoff.
-    resetRedis();
+    if (err instanceof LimiterTimeout) throw new RateLimiterUnavailable("rate limiter slow");
+    if (!redis.isReady) return down(err);
     throw new RateLimiterUnavailable((err as Error).message);
   }
+}
+
+function down(err: unknown): never {
+  breaker.payrollhubLimiterDownUntil = Date.now() + BACKOFF_MS;
+  // A failed client may be stuck; start fresh on the next attempt after the backoff.
+  resetRedis();
+  throw new RateLimiterUnavailable((err as Error).message);
 }
 
 function args(bucket: Bucket): string[] {

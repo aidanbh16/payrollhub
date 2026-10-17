@@ -16,7 +16,7 @@ import { insertEmployee, insertPayrollRun } from "@/services/engine/repository";
 import { canonicalRunContent, runContentHash, type RunContent } from "@/services/engine/run-content";
 import { ApprovalRejectedError, ConflictError, RunFailedError } from "@/services/errors";
 import { insertUser, listUsers } from "@/services/identity/repository";
-import { idsFor, rawSqlite, setupSeededDatabase } from "../helpers/database";
+import { idsFor, rawSqlite, setupSeededDatabase, nextPayDate } from "../helpers/database";
 import { Browser, advance, staffLogin, totpNow, useFakeClock } from "../helpers/http";
 
 // L2-02 (High): an unverified approval-token signature authorizes a run as any admin.
@@ -44,7 +44,7 @@ const tokenRedeemed = (runId: string) =>
 
 function newDraftRun(tenantId = "acme", createdBy = idsFor(tenantId).hrAdminId): string {
   const runId = randomUUID();
-  withTenant(tenantId, (s) => insertPayrollRun(s, { runId, payDate: "2026-11-27", status: "draft", createdBy, approvedBy: null }));
+  withTenant(tenantId, (s) => insertPayrollRun(s, { runId, payDate: nextPayDate(), status: "draft", createdBy, approvedBy: null }));
   return runId;
 }
 

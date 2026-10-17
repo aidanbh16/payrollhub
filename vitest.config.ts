@@ -14,5 +14,8 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     setupFiles: ["tests/setup.ts"],
+    // Some tests reseed the database (scrypt hashing) or run npm run setup in a child process; with every file running
+    // in parallel the 5 s default is too tight for them. Assertions are unaffected.
+    testTimeout: 20_000,
   },
 });

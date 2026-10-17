@@ -178,7 +178,7 @@ export async function signJwtVersioned(
 export async function verifyJwt(
   name: JwtKeyName,
   token: string,
-  options: { issuer: string; audience: string; maxTokenAgeSeconds: number },
+  options: { issuer: string; audience: string | string[]; maxTokenAgeSeconds: number },
 ): Promise<JWTPayload & { keyVersion: number }> {
   const header = decodeProtectedHeader(token);
   const key = versions(name).find((v) => kid(name, v.version) === header.kid);

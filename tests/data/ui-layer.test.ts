@@ -61,6 +61,12 @@ describe("[L0-01 DiD] [L2-01 DiD] Browser security headers (Proxy)", () => {
     const all = Object.fromEntries(rules.find((r) => r.source === "/:path*")!.headers.map((h) => [h.key, h.value]));
     expect(all).toMatchObject({ "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer" });
   });
+
+  it("RT-11: responses do not announce the framework (no X-Powered-By)", () => {
+    // Turn 13: every response carried "X-Powered-By: Next.js". Next.js adds it unless poweredByHeader is false; the
+    // browser test checks a live response too.
+    expect(nextConfig.poweredByHeader).toBe(false);
+  });
 });
 
 describe("[L0-01 DiD] [L2-01 DiD] The UI calls only the route handlers", () => {

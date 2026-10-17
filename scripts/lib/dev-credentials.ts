@@ -74,6 +74,13 @@ export function readStaffCredential(email: string): StaffCredential {
   return { organization: f[1], email: f[2], role: f[3], password: f[4], totpSecret: f[5], otpauth: f[6] };
 }
 
+/** An employee's password at the tenant's stand-in IdP (D22). */
+export function idpPasswordFor(email: string): string {
+  const f = records("employee").find((r) => r[2] === email.trim().toLowerCase());
+  if (!f) throw new Error(`No employee ${email} in the development credentials file. Run npm run db:reset.`);
+  return f[3];
+}
+
 /** A mailbox's development password (D30). */
 export function mailboxPasswordFor(email: string): string {
   const f = records("mailbox").find((r) => r[1] === email.trim().toLowerCase());

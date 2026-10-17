@@ -28,6 +28,11 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
         <Field label="Email" name="email" type="email" autoComplete="username" />
         <Field label="Password" name="password" type="password" autoComplete="current-password" />
         <Submit>Continue</Submit>
+        <p className="text-sm">
+          <a href="/login/unlock" className="underline">
+            Locked out after too many attempts?
+          </a>
+        </p>
       </form>
 
       <form method="get" action="/api/auth/sso/start" className="space-y-4 border-t border-zinc-200 pt-6">

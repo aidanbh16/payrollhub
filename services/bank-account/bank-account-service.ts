@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { env } from "@/config/env";
 import { withTenant, type TenantScope } from "@/data/db/tenant-scope";
 import { findEmployeeByUserId, getEmployee, listEmployees } from "@/services/engine/repository";
-import { InvalidInputError, NotFoundError, ServiceAuthError } from "@/services/errors";
+import { ConflictError, InvalidInputError, NotFoundError, ServiceAuthError } from "@/services/errors";
 import { getUser, listUsers } from "@/services/identity/repository";
 import { authorizeServiceCall, type ServiceAuth } from "@/services/identity/service-tokens";
 import { noticeRequested, noticeResolved } from "./notify";
@@ -176,8 +176,9 @@ const linkHash = (token: string) => createHash("sha256").update(token).digest("h
 
 /**
  * Records a requested change as PENDING; it is never paid until the employee confirms it from their own email.
- * Any earlier pending change is superseded in the same transaction (its link stops working). Returns no link or token:
- * those go only to the employee's existing contact address. Works the same for an employee and an HR Admin.
+ * Any earlier pending change is superseded in the same transaction (its link stops working), except that an HR Admin
+ * cannot supersede a change the employee requested (409, RT-07). Returns no link or token: those go only to the
+ * employee's existing contact address.
  */
 export async function requestBankChange(
   auth: ServiceAuth,
@@ -197,6 +198,12 @@ export async function requestBankChange(
     const isSelf = requester?.userId === employee.userId;
     if (!requester || requester.status !== "active" || !(isSelf || requester.role === "hr_admin")) throw new NotFoundError();
     const contact = getUser(s, employee.userId)!.email;
+    // RT-07: an HR Admin request never cancels a change the employee asked for; the employee resolves their own first.
+    // The employee may still replace their own pending change, or an HR Admin's.
+    const pending = findPendingChange(s, employee.employeeId);
+    if (pending && !isSelf && pending.requestedBy === employee.userId) {
+      throw new ConflictError("The employee has a pending bank change of their own; it must be confirmed or rejected first");
+    }
 
     const superseded = supersedePendingChanges(s, employee.employeeId, requester.userId, now);
     const supersededLast4 = superseded.map((id) => last4(getAccountChange(s, id)!.accountNumber));
