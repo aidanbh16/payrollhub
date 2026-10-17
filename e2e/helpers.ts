@@ -75,9 +75,9 @@ export async function signInEmployee(page: Page, email: string) {
   await expect(page).toHaveURL(/\/employee$/);
 }
 
-const SHOTS = join(ROOT, "..", "Docs", "layer9-screenshots");
+const SHOTS = join(ROOT, ".data", "e2e", "screenshots");
 let shot = 0;
-/** Full-page screenshot into Docs/layer9-screenshots for the walkthrough. */
+/** Full-page screenshot of a walkthrough step, into .data/e2e/screenshots (inside the project; gitignored). */
 export async function screenshot(page: Page, name: string) {
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: join(SHOTS, `${String(++shot).padStart(2, "0")}-${name}.png`), fullPage: true });

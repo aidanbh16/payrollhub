@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Message, Section } from "@/app/_components/console-shell";
 import { api, dateTime } from "@/app/_components/client-api";
 import type { ChangeView } from "@/services/bank-account/bank-account-service";
@@ -12,10 +12,17 @@ export function ConfirmChange({ tenantId, changeId }: { tenantId: string; change
   const [token, setToken] = useState<string | null>(null);
   const [view, setView] = useState<ChangeView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The token as first read from the address bar. Kept in a ref because React runs this effect twice under `next dev`
+  // (Strict Mode), and by the second run the first has already removed the token from the URL.
+  const linkToken = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get("token");
-    if (fromUrl) window.history.replaceState(null, "", window.location.pathname);
+    if (linkToken.current === undefined) {
+      linkToken.current = new URLSearchParams(window.location.search).get("token");
+      if (linkToken.current) window.history.replaceState(null, "", window.location.pathname);
+    }
+    const fromUrl = linkToken.current;
+    let current = true;
     const load = async (): Promise<ChangeView> => {
       if (!fromUrl || fromUrl.length > 128) throw new Error("no-token");
       return api<ChangeView>(`/api/tenants/${encodeURIComponent(tenantId)}/bank-account/changes/${encodeURIComponent(changeId)}/view`, {
@@ -25,16 +32,21 @@ export function ConfirmChange({ tenantId, changeId }: { tenantId: string; change
     };
     load()
       .then((v) => {
+        if (!current) return;
         setToken(fromUrl);
         setView(v);
       })
-      .catch((e: Error) =>
+      .catch((e: Error) => {
+        if (!current) return;
         setError(
           e.message === "no-token"
             ? "Open the confirmation link from your email to see this change."
             : "This confirmation link is invalid, already used, replaced by a newer request, or expired.",
-        ),
-      );
+        );
+      });
+    return () => {
+      current = false;
+    };
   }, [tenantId, changeId]);
 
   if (error) return <Message kind="error">{error}</Message>;

@@ -17,7 +17,9 @@
     "bank": "tsx --env-file=.env --conditions=react-server scripts/mock-bank.ts",
     "totp": "tsx --env-file=.env --conditions=react-server scripts/totp.ts",
     "test:e2e": "tsx scripts/run-tests.ts e2e",
-    "traceability": "tsx scripts/traceability.ts"
+    "traceability": "tsx scripts/traceability.ts",
+    "docs:check": "tsx scripts/check-docs-paths.ts",
+    "submission": "tsx scripts/build-submission.ts"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",

@@ -88,6 +88,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Runtime data, including the browser tests' development build (.data/e2e/next-dev).
+    ".data/**",
   ]),
   {
     // Application code: no raw SQL, no database internals, no platform scope, no minting service tokens.

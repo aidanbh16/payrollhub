@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { E2E_BANK_PORT, E2E_ORIGIN, E2E_PORT, childEnv } from "./e2e/env";
+import { E2E_BANK_PORT, E2E_DEV_ORIGIN, E2E_DEV_PORT, E2E_ORIGIN, E2E_PORT, childEnv } from "./e2e/env";
 
 // Browser end-to-end tests (Layer 9): the full flow in real Chromium against `next start` and the stand-in bank, from
 // a clean seed. Run with `npm run test:e2e` (builds first; needs Redis). See e2e/env.ts for the isolated data folder.
@@ -23,5 +23,14 @@ export default defineConfig({
       timeout: 180_000,
     },
     { command: "npm run bank", port: E2E_BANK_PORT, env: childEnv(), reuseExistingServer: false, timeout: 60_000 },
+    // The development server (README step 7) on the same data, after the clean seed above, with its own build folder,
+    // so it runs alongside the production build above and any `npm run dev` you have open.
+    {
+      command: `npm run dev -- -p ${E2E_DEV_PORT}`,
+      url: `${E2E_DEV_ORIGIN}/login`,
+      env: { ...childEnv(), PAYROLLHUB_DIST_DIR: ".data/e2e/next-dev" },
+      reuseExistingServer: false,
+      timeout: 180_000,
+    },
   ],
 });

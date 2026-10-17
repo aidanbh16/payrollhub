@@ -8,6 +8,9 @@ const DIR = ".data/e2e";
 export const E2E_PORT = 3100;
 export const E2E_ORIGIN = `http://localhost:${E2E_PORT}`;
 export const E2E_BANK_PORT = 8444;
+/** `next dev` on the same data, for what only development mode shows (React Strict Mode runs effects twice). */
+export const E2E_DEV_PORT = 3102;
+export const E2E_DEV_ORIGIN = `http://localhost:${E2E_DEV_PORT}`;
 
 export const E2E_ENV: Record<string, string> = {
   DATABASE_PATH: `${DIR}/payrollhub.db`,

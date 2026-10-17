@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The browser tests run a second `next dev` (e2e/dev-mode.spec.ts) next to any development server you have open.
+  // Next.js allows one per build folder, so the test run gives its own (under .data/e2e, gitignored). Unset otherwise.
+  ...(process.env.PAYROLLHUB_DIST_DIR ? { distDir: process.env.PAYROLLHUB_DIST_DIR } : {}),
   // Cache Components (and its Partial Prerendering) is off: a nonce-based Content-Security-Policy needs every page
   // rendered per request, and a prerendered shell's scripts cannot carry the nonce (DV-44). See edge/security-headers.ts.
   experimental: {

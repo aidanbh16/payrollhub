@@ -12,7 +12,7 @@ async function main() {
   rmSync(env().MOCK_BANK_DIR, { recursive: true, force: true });
   migrateDatabase();
   await seedDatabase();
-  console.log(`Database reset: migrations applied, ${SEED_TENANTS.length} tenants seeded. Test accounts are listed in README.md.`);
+  console.log(`Database reset: migrations applied, ${SEED_TENANTS.length} tenants seeded. Test logins: ${env().DEV_CREDENTIALS_FILE} (README section 4).`);
 }
 
 main().catch((err) => {
