@@ -10,20 +10,20 @@ vi.hoisted(() => {
 });
 
 describe("D20: Redis stopped", () => {
-  it("login routes fail closed with 503", async () => {
+  it("[L1-05] login routes fail closed with 503", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await verdict(staffLogin(`${randomUUID()}@acme.test`))).toBe(503);
     expect(await verdict(formPost("/api/auth/mfa", { code: "123456" }))).toBe(503);
     expect(await verdict(idpLogin("acme", "alice@acme.test"))).toBe(503);
   });
 
-  it("money-moving routes fail closed with 503", async () => {
+  it("[L2-01 DiD] money-moving routes fail closed with 503", async () => {
     expect(await verdict(get(`/api/internal/engine/tenants/acme/runs/${randomUUID()}`))).toBe(503);
     expect(await verdict(get(`/api/internal/ach/tenants/acme/runs/${randomUUID()}/batch`))).toBe(503);
     expect(await verdict(formPost(`/api/tenants/acme/runs/${randomUUID()}/approve`, {}))).toBe(503);
   });
 
-  it("other routes keep working, with a logged warning", async () => {
+  it("[L0-11 DiD] other routes keep working, with a logged warning", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(await verdict(get("/login"))).toBe("passed");
     expect(await verdict(get("/api/admin/me", { cookie: "__Host-ph_session=x" }))).toBe("passed");
@@ -31,7 +31,7 @@ describe("D20: Redis stopped", () => {
     expect(warn.mock.calls.some(([msg]) => String(msg).includes("edge.rate_limiter_unavailable"))).toBe(true);
   });
 
-  it("the 503 says to retry later and nothing more", async () => {
+  it("[L1-05] the 503 says to retry later and nothing more", async () => {
     const { proxy } = await import("@/proxy");
     const res = await proxy(staffLogin(`${randomUUID()}@acme.test`));
     expect(res.status).toBe(503);

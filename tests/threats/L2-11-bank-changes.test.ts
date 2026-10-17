@@ -12,7 +12,7 @@ import { POST as idpLoginPOST } from "@/app/mock-idp/[tenantId]/login/route";
 import { mintAsBff } from "@/application/mint-as-bff";
 import { withTenant } from "@/data/db/tenant-scope";
 import { openMailbox } from "@/partners/mock-mail/mail";
-import { SEED_TENANTS, mailboxPasswordFor } from "@/scripts/lib/seed";
+import { SEED_TENANTS, mailboxPasswordFor, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { LINK_TTL_MS, getBankSummary, viewBankChange } from "@/services/bank-account/bank-account-service";
 import { isValidAccountNumber, isValidRoutingNumber } from "@/services/bank-account/validation";
 import { startRun } from "@/services/engine/engine-service";
@@ -125,7 +125,7 @@ async function approvedRun(): Promise<{ runId: string; token: string }> {
   const createdBy = idsFor("acme").hrAdminId;
   withTenant("acme", (s) => insertPayrollRun(s, { runId, payDate: "2026-11-27", status: "draft", createdBy, approvedBy: null }));
   advance(31);
-  const res = await approver.json(approvePOST, `/api/tenants/acme/runs/${runId}/approve`, { code: totpNow(acme.approver.totpSecret) }, { tenantId: "acme", runId });
+  const res = await approver.json(approvePOST, `/api/tenants/acme/runs/${runId}/approve`, { code: totpNow(seededTotpSecret(acme.approver.email)) }, { tenantId: "acme", runId });
   expect(res.status).toBe(200);
   return { runId, token: (await res.json()).approvalToken };
 }
@@ -139,9 +139,9 @@ const paidAccount = (runId: string, employeeId: string) =>
 /** Fresh PayrollHub sessions for everyone (after the clock jumps past the session lifetime). */
 async function signInAll() {
   admin = new Browser();
-  await staffLogin(admin, "acme", acme.hrAdmin.email, acme.hrAdmin.password, acme.hrAdmin.totpSecret);
+  await staffLogin(admin, "acme", acme.hrAdmin.email, seededPassword(acme.hrAdmin.email), seededTotpSecret(acme.hrAdmin.email));
   approver = new Browser();
-  await staffLogin(approver, "acme", acme.approver.email, acme.approver.password, acme.approver.totpSecret);
+  await staffLogin(approver, "acme", acme.approver.email, seededPassword(acme.approver.email), seededTotpSecret(acme.approver.email));
   alice = new Browser();
   await ssoLogin(alice, "acme", aliceSeed.email, aliceSeed.idpPassword);
   bob = new Browser();
@@ -162,7 +162,7 @@ beforeAll(async () => {
 
 afterAll(() => vi.restoreAllMocks());
 
-describe("L2-11: a change is pending until the employee confirms it out of band", () => {
+describe("[L2-11] a change is pending until the employee confirms it out of band", () => {
   it("an admin's change is pending, a run before confirmation pays the old verified account, and confirming switches it", async () => {
     const before = verifiedIds(aliceEmployeeId);
     expect(before).toHaveLength(1);
@@ -201,7 +201,7 @@ describe("L2-11: a change is pending until the employee confirms it out of band"
     expect(confirmedNotice.subject).toBe("Pay account change confirmed");
   });
 
-  it("an HR Admin cannot confirm: the confirm route is for the employee, and the admin never receives the link", async () => {
+  it("[L0-01 DiD] an HR Admin cannot confirm: the confirm route is for the employee, and the admin never receives the link", async () => {
     const { res } = await adminRequests(aliceEmployeeId);
     const receipt = await res.json();
     expect(JSON.stringify(receipt)).not.toMatch(/token|https?:/);
@@ -336,13 +336,13 @@ describe("L2-11: a change is pending until the employee confirms it out of band"
   });
 });
 
-describe("L2-11: the mailbox is a separate channel", () => {
+describe("[L2-11] the mailbox is a separate channel", () => {
   const openAs = async (browser: Browser, address: string, password: string) =>
     seen(await browser.post(outboxRoute.POST, "/dev/outbox/view", { address, password }));
 
   it("only the mailbox's own password opens it; PayrollHub sessions and passwords do not", async () => {
     const wrong = [
-      [admin, aliceSeed.email, acme.hrAdmin.password], // the admin's PayrollHub password
+      [admin, aliceSeed.email, seededPassword(acme.hrAdmin.email)], // the admin's PayrollHub password
       [admin, aliceSeed.email, mailboxPasswordFor(acme.hrAdmin.email)], // the admin's own mailbox password
       [bob, aliceSeed.email, mailboxPasswordFor(bobSeed.email)], // another employee's mailbox password
       [alice, aliceSeed.email, aliceSeed.idpPassword], // Alice's IdP password is not her mailbox password
@@ -374,12 +374,12 @@ describe("L2-11: the mailbox is a separate channel", () => {
     if (process.platform !== "win32") expect(statSync(process.env.DEV_CREDENTIALS_FILE!).mode & 0o077).toBe(0);
   });
 
-  it("a user's contact email cannot be changed to redirect confirmations", () => {
+  it("[L2-11 DiD] [L0-01 DiD] a user's contact email cannot be changed to redirect confirmations", () => {
     expect(() => db().prepare("UPDATE app_user SET email = 'attacker@evil.example' WHERE user_id = ?").run(aliceUserId)).toThrow(/cannot be changed/);
   });
 });
 
-describe("L2-11: validation and last-4-only output", () => {
+describe("[L2-11 DiD] validation and last-4-only output", () => {
   it("rejects an invalid routing number or account number, storing nothing", async () => {
     const before = changeCount(aliceEmployeeId);
     const bad = await adminRequests(aliceEmployeeId, "555512345678", "123456789");
@@ -406,7 +406,7 @@ describe("L2-11: validation and last-4-only output", () => {
   });
 });
 
-describe("D28 with Layer 7: confirming a change after approval invalidates the approval", () => {
+describe("[L2-11 DiD] D28 with Layer 7: confirming a change after approval invalidates the approval", () => {
   it("a change pending at approval does not matter; confirming it after approval fails the run until re-approved", async () => {
     const { accountNumber } = await adminRequests(aliceEmployeeId);
     const link = await latestLink(aliceSeed.email);
@@ -424,7 +424,7 @@ describe("D28 with Layer 7: confirming a change after approval invalidates the a
 
     // Re-approved, the run pays the account Alice confirmed.
     advance(31);
-    const again = await approver.json(approvePOST, `/api/tenants/acme/runs/${runId}/approve`, { code: totpNow(acme.approver.totpSecret) }, { tenantId: "acme", runId });
+    const again = await approver.json(approvePOST, `/api/tenants/acme/runs/${runId}/approve`, { code: totpNow(seededTotpSecret(acme.approver.email)) }, { tenantId: "acme", runId });
     expect(again.status).toBe(200);
     await start(runId, (await again.json()).approvalToken);
     expect(paidAccount(runId, aliceEmployeeId)).toBe(newAccount);
@@ -433,7 +433,7 @@ describe("D28 with Layer 7: confirming a change after approval invalidates the a
   });
 
   // Last: checks everything this file produced.
-  it("no full account or routing number appears in any response, notice, or log", async () => {
+  it("[L2-12 DiD] no full account or routing number appears in any response, notice, or log", async () => {
     const mailboxes = await Promise.all(
       [aliceSeed.email, bobSeed.email, acme.hrAdmin.email].map(async (a) => JSON.stringify(await openMailbox(a, mailboxPasswordFor(a)))),
     );

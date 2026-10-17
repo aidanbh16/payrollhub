@@ -12,7 +12,8 @@ Project 2 from the Project 1 threat model, the Assignment 4 prioritized threats,
 > pay results), Layer 7 (Bank Account service: pending changes, out-of-band confirmation, the development mailbox),
 > Layer 8 (ACH Disbursement: idempotent, signed batches sent over mTLS to the stand-in bank; the central log
 > pipeline with field redaction), and Layer 9 (the React UI: HR Admin and Payroll Approver consoles, the Employee
-> portal, browser security headers, and browser end-to-end tests) are in place. Sections marked *(pending)* are filled in as each layer lands.
+> portal, browser security headers, and browser end-to-end tests), and Layer 10 (the threat test suite tagged by
+> threat ID, with a traceability check over all 15 Assignment 4 threats) are in place. Sections marked *(pending)* are filled in as each layer lands.
 
 ## Prerequisites
 
@@ -23,6 +24,10 @@ Project 2 from the Project 1 threat model, the Assignment 4 prioritized threats,
 | Docker Desktop / Docker Engine | Compose v2+ | Runs Redis. See the manual fallback below if Docker is unavailable. |
 
 No C/C++ build tools are needed: better-sqlite3 ships prebuilt binaries for Windows, macOS, and Linux.
+
+**Supported browsers:** current Chrome, Edge, and Firefox, and Safari 16.4 or later. Older browsers do not send Fetch
+Metadata, so their form posts are refused (D39). **Scripts** (curl, test tools) that call PayrollHub's session or
+public routes with POST must send an `Origin` header naming the app's origin, e.g. `-H "Origin: http://localhost:3000"`.
 
 ## Install and run
 
@@ -61,6 +66,19 @@ port 3100 and the stand-in bank on 8444, with their own data under `.data/e2e/` 
 run never touches your development data. They sign in with the credentials file and `npm run totp`, walk the full
 flow in Chromium, and check the browser-level controls (headers, CSP, storage, Referer, back button). Screenshots of
 each step are written to `../Docs/layer9-screenshots/`.
+
+**Tests by threat (Layer 10).** Every threat test carries its Assignment 4 threat ID in its title (or in the title of
+the `describe` around it): `[L2-11]` marks a test that attacks the threat's primary control, `[L2-11 DiD]` one that
+attacks a defense-in-depth control. The 15 IDs, with their primary and defense-in-depth control files, are listed in
+`tests/threat-registry.ts`.
+
+- `npm test -- L2-11` runs only the vitest tests tagged with that threat (several IDs work: `npm test -- L2-11 L2-12`).
+- `npm run test:e2e -- L0-01` does the same for the browser tests.
+- `npm run traceability` checks the mapping and fails if any of the 15 threats has no test, no test of its primary
+  control, or (when it has defense-in-depth controls) no test of those; if any test names an ID that is not one of
+  the 15, or a tag is malformed; or if a control file listed in the registry is missing. Add `--markdown` to print
+  the table below, `--write-readme` to regenerate it here, and `--run` (plus `--e2e` for the browser suite) to run
+  the tests and print the results grouped by threat ID.
 
 For a production build: `npm run build`, then `npm run start`.
 
@@ -144,8 +162,10 @@ script also registers the new public key with the stand-in bank, which keeps tru
 | `npm run setup` | Creates `.env` if missing and fills in generated development secrets, and creates the local CA and mTLS certificates in `PKI_DIR`. Never overwrites existing values or certificates. |
 | `npm run bank` | Runs the stand-in originating bank at `BANK_URL` (mTLS, signed batches only, D12). |
 | `npm run totp -- <email> [--code-only]` | Prints a seeded staff account's current authenticator code, from `.data/dev-credentials.txt`. |
-| `npm run test:e2e` | Builds, then runs the browser end-to-end tests (Playwright; needs Redis; ports 3100 and 8444). |
-| `npm run db:reset` | Deletes the database and the stand-ins' data (IdP keys, mailboxes, the bank's ledger), applies every migration, and seeds: new random mailbox passwords, the ACH public key registered with the bank. Keeps certificates and logs. |
+| `npm test [-- <threat ID>...]` | Runs the vitest suite, or only the tests tagged with the given threats (needs Redis). |
+| `npm run test:e2e [-- <threat ID>...]` | Builds, then runs the browser end-to-end tests (Playwright; needs Redis; ports 3100 and 8444), or only those tagged with the given threats. |
+| `npm run traceability [-- --markdown \| --write-readme \| --run [--e2e]]` | Checks that all 15 threats map to tests (see "Tests by threat"). |
+| `npm run db:reset` | Deletes the database and the stand-ins' data (IdP keys, mailboxes, the bank's ledger), applies every migration, and seeds: new random staff passwords, TOTP secrets, and mailbox passwords, the ACH public key registered with the bank. Keeps certificates and logs. |
 | `npm run db:migrate` | Applies pending migrations only. |
 | `npm run db:seed` | Seeds an empty, migrated database (refuses if the tenants already exist). |
 | `npm run db:generate` | Developer use: generates a new migration after editing `data/db/tables.ts`. |
@@ -237,19 +257,22 @@ Then start the app with `TRUSTED_CLIENT_IP_HEADER=x-real-ip` (and `npm run start
 `npm run db:reset` loads two tenants and writes **`.data/dev-credentials.txt`** (gitignored): every login below, each
 staff account's TOTP secret with an `otpauth://` link (paste it into an authenticator app, or turn it into a QR code
 with any QR tool), and the random mailbox passwords. `npm run totp -- <staff email>` prints the current code instead.
-Every password and TOTP secret here is a **development-only** value.
+The employee IdP passwords below are **development-only** values. **Staff passwords and TOTP secrets are random per
+install** (144 and 160 bits, new on every `npm run db:reset`), so they appear only in that file, never in the source
+or this README.
 
-| Tenant id (organization) | Role | Email | Password | TOTP secret (base32) |
+| Tenant id (organization) | Role | Email | Password | TOTP secret |
 |---|---|---|---|---|
-| `acme` (Acme Corporation, 22% withholding) | HR Admin | `admin@acme.test` | `Acme-Admin-Dev-2026!` | `MFRW2ZJNMFSG22LOFVSGK5RNORXXI4BB` |
-| `acme` | Payroll Approver | `approver@acme.test` | `Acme-Approver-Dev-2026!` | `MFRW2ZJNMFYHA4TWFVSGK5RNORXXI4BB` |
+| `acme` (Acme Corporation, 22% withholding) | HR Admin | `admin@acme.test` | random, in `.data/dev-credentials.txt` | random, in `.data/dev-credentials.txt` |
+| `acme` | Payroll Approver | `approver@acme.test` | random, in `.data/dev-credentials.txt` | random, in `.data/dev-credentials.txt` |
 | `acme` | Employees | `alice@acme.test`, `bob@acme.test`, `carol@acme.test` | `Acme-Employee-Dev-2026!` (at the stand-in IdP) | n/a (SSO) |
-| `globex` (Globex Inc., 20% withholding) | HR Admin | `admin@globex.test` | `Globex-Admin-Dev-2026!` | `M5WG6YTYFVQWI3LJNYWWIZLWFVXXI4BB` |
-| `globex` | Payroll Approver | `approver@globex.test` | `Globex-Approver-Dev-2026!` | `M5WG6YTYFVQXA4DSOYWWIZLWFVXXI4BB` |
+| `globex` (Globex Inc., 20% withholding) | HR Admin | `admin@globex.test` | random, in `.data/dev-credentials.txt` | random, in `.data/dev-credentials.txt` |
+| `globex` | Payroll Approver | `approver@globex.test` | random, in `.data/dev-credentials.txt` | random, in `.data/dev-credentials.txt` |
 | `globex` | Employees | `dana@globex.test`, `eli@globex.test`, `fay@globex.test` | `Globex-Employee-Dev-2026!` (at the stand-in IdP) | n/a (SSO) |
 
 - MFA codes: `npm run totp -- admin@acme.test` (add `--code-only` for just the digits), or add the TOTP secret or
-  `otpauth://` link to any authenticator app (Google Authenticator, 1Password, etc.).
+  `otpauth://` link from `.data/dev-credentials.txt` to any authenticator app (Google Authenticator, 1Password,
+  etc.). After another `npm run db:reset`, re-add it: the old secret no longer works.
 - Employees sign in only through their tenant's SSO identity provider (Assignment 5, Section 2.1; D22), so they have
   no PayrollHub password; the database rejects one (`app_user_password_check`). Their passwords are stored by the
   stand-in IdP in `MOCK_IDP_DIR`, which `npm run db:reset` provisions with a new signing key per tenant.
@@ -275,7 +298,7 @@ The top-level folders mirror the Assignment 5 layers and services.
 | `migrations/` | `0000_tables.sql` (generated by drizzle-kit) and `0001_tenant_isolation.sql` (hand-written views and triggers) |
 | `config/` | Environment validation |
 | `scripts/` | Setup, migrate, seed, reset |
-| `tests/threats/`, `tests/data/` | One test file per Assignment 4 threat, plus data-layer tests |
+| `tests/threats/`, `tests/data/`, `e2e/` | Threat tests (tagged by threat ID), data-layer tests, browser tests; `tests/threat-registry.ts` lists the 15 threats |
 
 ## Third-party dependencies
 
@@ -327,8 +350,9 @@ These are enforced by ESLint (`eslint.config.mjs`), the type checker, runtime ch
 4. **Reads go through views.** `s.read(view)` accepts only the tenant-filtered views (checked by type and at runtime).
    Writes name a table; the scope fills `tenant_id` itself and rejects a caller-supplied one.
 5. **The tenant id comes from verified claims only,** never from request input (L2-04).
-6. **No caching of tenant or user data (D17).** Cache Components is enabled in `next.config.ts`, so nothing that
-   holds tenant or user data may be marked `"use cache"`; it would be served across users and tenants.
+6. **No caching of tenant or user data (D17).** While Cache Components is off (DV-44), `"use cache"` has no effect, so
+   this rule does not currently apply. It stays as a developer rule in case caching is turned back on: then nothing
+   that holds tenant or user data may be marked `"use cache"`, because it would be served across users and tenants.
 7. **Every route handler uses the one wrapper** in `application/http/route.ts`:
    `export const POST = route.session({...})`, `route.service({...})`, or `route.public({...})`. ESLint rejects any
    other export from a `route.ts` file, and `tests/data/route-wrapper.test.ts` scans every route file and fails on one
@@ -342,7 +366,7 @@ These are enforced by ESLint (`eslint.config.mjs`), the type checker, runtime ch
 
    Pages call `requirePageSession(roles)` from `application/auth/dal.ts`. Proxy's cookie check is only a pre-filter.
    The privileged-role MFA requirement lives inside the DAL, so no route can opt out of it.
-8. **Session reads in pages go inside `<Suspense>`** (a Cache Components rule). `requirePageSession()` calls
+8. **Session reads in pages go inside `<Suspense>`** (a Cache Components rule, kept for the same reason as rule 6). `requirePageSession()` calls
    `connection()` first, so the check runs at request time, never during a prerender or prefetch.
 9. **State-changing requests check their origin.** The route wrapper refuses any non-GET request from another origin
    on session and public routes, on top of `SameSite=Strict` cookies. Internal service routes authenticate by token
@@ -359,6 +383,9 @@ These are enforced by ESLint (`eslint.config.mjs`), the type checker, runtime ch
     because reads go through the tenant-filtered views and services throw `NotFoundError` for both.
 12. **New routes join the edge policy.** A route that checks a password or code goes in `edge/login-routes.ts`; a
     money-moving route goes in `MONEY_ROUTES` (`edge/route-policy.ts`). Both fail closed when Redis is down (D20).
+13. **Every threat test is tagged (D41).** A test that attacks a control for one of the 15 threats carries `[Lx-yy]`
+    (primary control) or `[Lx-yy DiD]` (defense in depth) in its title or its `describe` title. `npm run
+    traceability` must pass; regenerate the README table with `npm run traceability -- --write-readme`.
 
 ## Design decisions
 
@@ -376,16 +403,18 @@ These are enforced by ESLint (`eslint.config.mjs`), the type checker, runtime ch
 | D28 | **The approval covers the run's content.** The token's `rh` claim is the SHA-256 of a canonical encoding of the run:<br>- a JSON array with a version tag, in fixed field order: tenant, run id, pay date, scheduled run date, creator, withholding rate;<br>- the active employees sorted by id (plain code-unit order), each with pay rate and verified bank account id (or null);<br>- integers for money, UTF-8 (`services/engine/run-content.ts`).<br>Payroll Engine recomputes it from the database before computing anything. **A pay-rate change, an employee added or removed, a withholding change, or a bank change confirmed after approval all invalidate the token, and the run must be approved again. This is intended:** an approver approves what will actually be paid. |
 | D29 | **Late runs proceed.** A run started after its scheduled run date still computes, returns `late: true`, and logs a warning, because not paying is worse than paying late. The approver UI shows the flag in Layer 9. |
 | D30 | **How the development mailbox is gated.** Each mailbox opens only with its own password, stored as a scrypt hash by the stand-in provider (`partners/mock-mail/`), separate from PayrollHub and the IdP; no browsing or listing; no PayrollHub session grants access; failed opens are throttled per mailbox by Proxy (fail closed, D20); pages are `no-store` and `no-referrer`. **The passwords are random per install** (`npm run db:reset`), written only to `.data/dev-credentials.txt` (gitignored, owner-only), so taking over an HR Admin account says nothing about any mailbox password. |
-| D31 | **Contact email changes are out of scope.** No feature changes a user's email, and the trigger `app_user_email_immutable` (migration `0011`) refuses any change, so nothing can redirect confirmations. Changing an address would need confirmation from the old one; it is left for a later project. |
-| D32 | **Bank-account changes.** Any change, by the employee or an HR Admin, is stored as pending (`bank_account_change`) and never paid. One pending change per employee: a new request supersedes the old one (status `rejected`, resolution `superseded`) and kills its link; a partial unique index enforces it. Links: 256 random bits, only the SHA-256 stored (`verification_code`), bound to tenant, change, and employee, valid 60 minutes, consumed atomically. GET only shows the change; Confirm and Reject are POSTs that need the employee's own session (origin-checked, SameSite=Strict cookie). Confirming retires every verified account and inserts the new one in one transaction, recording requester, confirmer, and time. Notices go to the existing address on request, confirmation, rejection, and supersession. Routing numbers must pass the ABA checksum; account numbers are 4 to 17 digits. Responses, notices, and logs show only the last 4 digits. |
+| D31 | *Recorded without asking the author in Turns 9 and 10; reviewed and accepted after the fact in Turn 12.* **Contact email changes are out of scope.** No feature changes a user's email, and the trigger `app_user_email_immutable` (migration `0011`) refuses any change, so nothing can redirect confirmations. Changing an address would need confirmation from the old one; it is left for a later project. |
+| D32 | *Recorded without asking the author in Turns 9 and 10; reviewed and accepted after the fact in Turn 12.* **Bank-account changes.** Any change, by the employee or an HR Admin, is stored as pending (`bank_account_change`) and never paid. One pending change per employee: a new request supersedes the old one (status `rejected`, resolution `superseded`) and kills its link; a partial unique index enforces it. Links: 256 random bits, only the SHA-256 stored (`verification_code`), bound to tenant, change, and employee, valid 60 minutes, consumed atomically. GET only shows the change; Confirm and Reject are POSTs that need the employee's own session (origin-checked, SameSite=Strict cookie). Confirming retires every verified account and inserts the new one in one transaction, recording requester, confirmer, and time. Notices go to the existing address on request, confirmation, rejection, and supersession. Routing numbers must pass the ABA checksum; account numbers are 4 to 17 digits. Responses, notices, and logs show only the last 4 digits. |
 | D33 | **The Payroll Approver sends to the bank**, from the run's review page after a successful compute (`POST /api/tenants/<org>/runs/<runId>/disburse`; HR Admins and employees get 403). |
-| D34 | **ACH key rotation retires for signing only** (see "Rotating a signing key"). Old ACH key versions keep verifying, so existing batches remain verifiable; approval and service keys stop verifying at once. |
+| D34 | *Recorded without asking the author in Turns 9 and 10; reviewed and accepted after the fact in Turn 12.* **ACH key rotation retires for signing only** (see "Rotating a signing key"). Old ACH key versions keep verifying, so existing batches remain verifiable; approval and service keys stop verifying at once. |
 | D35 | **An account in PayResult retired after compute** (a bank change confirmed before the batch was built): refuse. The run moves to `failed` (`bank_account_changed`), no batch is built, the run can never be approved again (service check and trigger), and a new run pays everyone into their current verified accounts. |
-| D36 | **ACH Disbursement design.** One batch per run: the idempotency key is SHA-256 of a version tag, the tenant, and the run; the batch ID (20 characters) is derived from it and written inside the signed file (batch header, company discretionary data). `UNIQUE(run_id)`, `UNIQUE(idempotency_key)`, and the derived primary key enforce it. The file (NACHA PPD, credits only) is built from PayResult rows and verified accounts only; control totals (entry count, entry hash, total credit, block count) are re-read from the exact text and must equal the pay results before signing, and a trigger checks the stored totals again. Built and signed in one transaction, then sent: the exact bytes are signed (Ed25519, `ach-batch` key, through `data/keys/kms.ts`) and re-verified before each send. A timeout leaves the batch `signed`; sending again resends the same bytes, and the bank's duplicate answer for the same file counts as delivered. Net pay of zero produces no entry. |
-| D37 | **Log pipeline.** One logger (`data/log/logger.ts`); `console.*` is banned in app code (ESLint, plus a source scan in the tests) and wrapped at startup, so Next.js's own output is redacted too; unhandled errors (route wrapper, `onRequestError`, process hooks) go through it. Redaction at ingest: fields in the shared logging schema (`SENSITIVE_FIELDS`: account and routing numbers, SSN, file body, passwords, tokens, cookies, ...) at any depth, and patterns in every string: SSNs, 9-digit runs (`[ROUTING]` when ABA-valid), any run of 7 or more digits, and space- or dash-grouped digits totalling 7 or more. UUIDs are kept. Structured JSON lines, appended only. |
+| D36 | *Recorded without asking the author in Turns 9 and 10; reviewed and accepted after the fact in Turn 12.* **ACH Disbursement design.** One batch per run: the idempotency key is SHA-256 of a version tag, the tenant, and the run; the batch ID (20 characters) is derived from it and written inside the signed file (batch header, company discretionary data). `UNIQUE(run_id)`, `UNIQUE(idempotency_key)`, and the derived primary key enforce it. The file (NACHA PPD, credits only) is built from PayResult rows and verified accounts only; control totals (entry count, entry hash, total credit, block count) are re-read from the exact text and must equal the pay results before signing, and a trigger checks the stored totals again. Built and signed in one transaction, then sent: the exact bytes are signed (Ed25519, `ach-batch` key, through `data/keys/kms.ts`) and re-verified before each send. A timeout leaves the batch `signed`; sending again resends the same bytes, and the bank's duplicate answer for the same file counts as delivered. Net pay of zero produces no entry. |
+| D37 | *Recorded without asking the author in Turns 9 and 10; reviewed and accepted after the fact in Turn 12.* **Log pipeline.** One logger (`data/log/logger.ts`); `console.*` is banned in app code (ESLint, plus a source scan in the tests) and wrapped at startup, so Next.js's own output is redacted too; unhandled errors (route wrapper, `onRequestError`, process hooks) go through it. Redaction at ingest: fields in the shared logging schema (`SENSITIVE_FIELDS`: account and routing numbers, SSN, file body, passwords, tokens, cookies, ...) at any depth, and patterns in every string: SSNs, 9-digit runs (`[ROUTING]` when ABA-valid), any run of 7 or more digits, and space- or dash-grouped digits totalling 7 or more. UUIDs are kept. Structured JSON lines, appended only. |
 | D38 | **Browser security headers.** Proxy sends a per-request nonce Content-Security-Policy on every response: `default-src 'self'`; scripts only same-origin files or with the nonce (no `'unsafe-inline'`, no `'strict-dynamic'`, `'unsafe-eval'` only under `next dev`); styles same-origin or nonce; `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`. Plus `Cache-Control: no-store` on every page and API response, and from `next.config.ts` `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`, and a `Permissions-Policy`. No third-party resources anywhere, so the confirmation page (token in the URL) loads nothing from another origin; it also removes the token from the address bar. A page restored from the back-forward cache reloads (`BfcacheGuard`). `'strict-dynamic'` (in the Next.js guide's example) is left out: it let a script inserted at run time execute, and Next.js does not need it. |
-| D39 | **Cross-site request check uses Fetch Metadata.** With `Referrer-Policy: no-referrer`, browsers send `Origin: null` on same-origin POSTs, so the route wrapper now also reads `Sec-Fetch-Site` (set by the browser, not by page scripts): an `Origin` naming another origin is refused; when `Sec-Fetch-Site` is present it must be `same-origin`; `Origin: null` without it is refused; requests with neither (not a browser) are allowed as before. |
-| D40 | **Tester credentials.** `npm run db:reset` writes `.data/dev-credentials.txt` (gitignored, owner-only) with staff passwords, TOTP secrets and `otpauth://` links, employee IdP passwords, and random mailbox passwords; `npm run totp -- <email>` prints a current code. The UI layer imports no service code (ESLint, plus a source scan): pages only check the session to decide where to send the visitor, and all data comes from route handlers. |
+| D39 | *Side effect accepted in Turn 13 (see Supported browsers).* **Cross-site request check uses Fetch Metadata, falling back to Origin.** With `Referrer-Policy: no-referrer`, browsers send `Origin: null` on same-origin POSTs, so the route wrapper reads `Sec-Fetch-Site` (set by the browser, not by page scripts): an `Origin` naming another origin is always refused; when `Sec-Fetch-Site` is present it must be `same-origin`. **When it is missing** (a non-browser client, or a browser older than Safari 16.4, Firefox 90, or Chrome 76), the check falls back to `Origin`, which must be present and equal this origin exactly: a missing `Origin` or `Origin: null` is refused (403). Nothing is allowed silently. Older browsers therefore cannot submit forms (under `no-referrer` they send `Origin: null`), and scripts calling session or public routes must send `Origin`. (Turn 12 change: before, a request with neither header was allowed.) |
+| D40 | **Tester credentials.** `npm run db:reset` writes `.data/dev-credentials.txt` (gitignored, owner-only) with staff passwords and TOTP secrets (random per install since Turn 13 and Turn 12) and `otpauth://` links, employee IdP passwords, and random mailbox passwords; `npm run totp -- <email>` prints a current code. The UI layer imports no service code (ESLint, plus a source scan): pages only check the session to decide where to send the visitor, and all data comes from route handlers. |
+| D41 | *Accepted in Turn 13.* **Threat tags and the traceability check.** Tags live in test titles (`[L2-11]` primary, `[L2-11 DiD]` defense in depth) so both runners can filter on them (`vitest -t`, `playwright --grep`) and they show in every report; a test inherits the tags of its `describe`. `npm test -- <ID>` and `npm run test:e2e -- <ID>` go through `scripts/run-tests.ts`, which turns IDs into those filters and passes anything else through. `npm run traceability` reads the tags from the runners' own test lists (not by parsing source) and fails on: a threat with no test, no primary-control test, or (when it has defense-in-depth controls) no DiD test; an ID outside the Assignment 4 list, in a tag or anywhere in a title; a malformed tag; a missing control file. Tests that check general correctness or tooling (for example gross-to-net arithmetic) stay untagged and are listed by the script. |
+| D42 | *Accepted in Turn 13.* **Threat-to-control mapping additions (Layer 10).** Existing controls now also counted as defense in depth: the ESLint raw-SQL ban and its scan (D23) for L1-14 and L2-16; the `approval_token_write_once` / `approval_token_no_delete` triggers (migration `0007`) for L2-18, whose expiry and key version can therefore never be extended in the record; field encryption at rest (D15) for L2-12; DV-36's loopback check and the ServiceGrant rows for L1-19. No new controls. |
 | — | **Running payroll is one transaction.** Payroll Engine verifies the token and gets a redemption ticket from Payroll Approval first (async). Then one synchronous `withTenant` transaction does all of the following; if anything throws, SQLite rolls back all of it, so a burned token never exists next to missing or partial results:<br>- re-reads the run, D27, and the D28 hash;<br>- has Payroll Approval redeem the token (atomic `redeemed_at` update);<br>- computes every employee and writes all `pay_result` and `pay_exception` rows;<br>- moves the run to `computed`.<br>On a content mismatch or a computation error, a second small transaction burns the token and marks the run `failed` (`failure_reason` = `content_changed` or `computation_error`); re-approval moves it back to `approved`. A bad, replayed, or mismatched token changes nothing. Triggers allow results only while a run is `approved`, make results immutable, and allow only valid status changes. |
 | — | **Money:** integer cents. Withholding = gross × rate (basis points) ÷ 10,000, **rounded half up** to the cent, computed exactly as `floor((gross × bp + 5000) / 10000)`; net = gross − withholding, kept within [0, gross] (`services/engine/pay-calc.ts`). An active employee without a verified bank account is not paid and is reported in the run's `exceptions` and a `pay_exception` row. |
 | — | **SSO assertions are single-use.** Each assertion's `jti` is recorded in `sso_assertion` until the assertion could no longer pass validation (the later of `exp` and `iat` + 5 min, plus the 30 s clock tolerance), and a second use is refused. This is the same pattern as approval tokens (L2-01). |
@@ -433,6 +462,33 @@ Filled in as each layer is built; the planned mapping for the remaining threats 
 | L2-01 (defense in depth, Layer 9) | The approval token lives only in React state: never in localStorage, sessionStorage, IndexedDB, or cookies (ESLint ban, checked in a real browser); it is dropped before it is sent; a strict nonce CSP blocks injected scripts that could read it | `app/(console)/approver/approve-run.tsx`, `edge/security-headers.ts` | `e2e/full-flow.spec.ts`, `tests/data/browser-storage.test.ts` |
 | L2-11 (defense in depth, Layer 9) | The portal and the HR Admin console show a pending change as unverified; the confirmation page sends no Referer, loads nothing from another origin, removes the token from the address bar, and confirms only by POST; the cross-site check works under `no-referrer` (D39) | `app/(employee)/employee/**`, `app/(console)/admin/admin-console.tsx`, `application/http/forms.ts` | `e2e/full-flow.spec.ts`, `tests/data/route-wrapper.test.ts` |
 | Others | *(pending)* | | |
+
+### Threat-to-test traceability (generated)
+
+Generated by `npm run traceability -- --write-readme` from the test tags and `tests/threat-registry.ts`; do not edit by
+hand. "Tests" counts every vitest and browser test tagged with the threat (a test can carry several threats). A test
+tagged both ways for one threat (for example `[L0-01 DiD]` on a test inside an `[L0-01]` describe) counts in both
+the primary and the DiD figure, so those two can add up to more than the total.
+
+<!-- traceability:start (generated by npm run traceability -- --write-readme; do not edit) -->
+| Threat ID | Threat | Primary control file(s) | Defense-in-depth control file(s) | Test file(s) | Tests |
+|---|---|---|---|---|---|
+| L1-05 | Credential-stuffing flood on the API Gateway login route | `proxy.ts`, `edge/rate-limiter.ts`, `edge/login-routes.ts`, `edge/route-policy.ts`, `edge/known-devices.ts`, `edge/client-ip.ts` | none | `tests/threats/D20-redis-down.test.ts`, `tests/threats/D25-known-devices.test.ts`, `tests/threats/L0-01-admin-mfa.test.ts`, `tests/threats/L1-05-credential-stuffing.test.ts`, `tests/threats/L1-05-trusted-ip.test.ts` | 22 (22 primary, 0 DiD) |
+| L1-14 | Missing row-level predicate lets one tenant read another tenant's rows | `migrations/0001_tenant_isolation.sql`, `data/db/views.ts`, `data/db/tenant-scope.ts`, `data/db/scope-state.ts` | `eslint.config.mjs` | `tests/data/async-interleaving.test.ts`, `tests/data/views-only.test.ts`, `tests/threats/L1-14-cross-tenant-reads.test.ts` | 18 (16 primary, 2 DiD) |
+| L2-04 | tenantId path and token mismatch writes a run into another tenant | `application/http/route.ts`, `application/validation/`, `app/api/tenants/[tenantId]/runs/` | `data/db/tenant-scope.ts`, `services/identity/service-tokens.ts` | `tests/data/route-wrapper.test.ts`, `tests/threats/L2-04-route-handlers.test.ts`, `tests/threats/L2-04-tenant-from-scope.test.ts` | 16 (12 primary, 4 DiD) |
+| L2-16 | App-code-only tenant isolation writes results to the wrong tenant | `migrations/0001_tenant_isolation.sql`, `migrations/0000_tables.sql` | `eslint.config.mjs` | `tests/data/async-interleaving.test.ts`, `tests/data/views-only.test.ts`, `tests/threats/L2-16-cross-tenant-writes.test.ts` | 16 (14 primary, 2 DiD) |
+| L2-01 | Captured approval token replayed to launch an unauthorized payroll run | `services/approval/approval-service.ts`, `services/approval/repository.ts` | `app/api/tenants/[tenantId]/runs/[runId]/approve/route.ts`, `services/identity/step-up.ts`, `app/(console)/approver/approve-run.tsx`, `migrations/0007_approval_immutability.sql`, `services/engine/engine-service.ts`, `edge/security-headers.ts`, `eslint.config.mjs` | `e2e/full-flow.spec.ts`, `tests/data/browser-storage.test.ts`, `tests/data/ui-layer.test.ts`, `tests/threats/D20-redis-down.test.ts`, `tests/threats/L0-01-admin-mfa.test.ts`, `tests/threats/L2-01-approval-tokens.test.ts`, `tests/threats/L2-02-engine-failure.test.ts`, `tests/threats/L2-02-payroll-engine.test.ts` | 27 (6 primary, 21 DiD) |
+| L2-02 | Unverified approval-token signature authorizes a run as any admin | `services/engine/engine-service.ts`, `services/approval/approval-service.ts`, `services/engine/run-content.ts` | `app/api/internal/engine/`, `app/api/tenants/[tenantId]/runs/[runId]/start/route.ts`, `application/validation/runs.ts`, `migrations/0009_engine_integrity.sql` | `tests/threats/L2-02-engine-failure.test.ts`, `tests/threats/L2-02-payroll-engine.test.ts` | 16 (13 primary, 4 DiD) |
+| L1-19 | Unchecked service-to-service call reaches internal Payroll Engine endpoints | `services/identity/service-tokens.ts`, `data/keys/kms.ts`, `app/api/internal/`, `application/mint-as-bff.ts` | `application/http/route.ts`, `config/env.ts`, `instrumentation-node.ts`, `scripts/lib/seed.ts` | `tests/data/mint-handles.test.ts`, `tests/data/ui-layer.test.ts`, `tests/threats/DV-36-internal-origin.test.ts`, `tests/threats/L1-19-service-tokens.test.ts`, `tests/threats/L2-02-payroll-engine.test.ts`, `tests/threats/L2-16-cross-tenant-writes.test.ts` | 31 (24 primary, 7 DiD) |
+| L2-13 | Missing idempotency key double-submits the ACH batch and double-pays | `services/ach/ach-service.ts`, `migrations/0000_tables.sql`, `migrations/0013_ach_integrity.sql` | `partners/mock-bank/server.ts`, `app/api/tenants/[tenantId]/runs/[runId]/disburse/route.ts` | `tests/threats/L1-22-ach-signing.test.ts`, `tests/threats/L2-13-ach-idempotency.test.ts` | 12 (8 primary, 4 DiD) |
+| L0-01 | HR Admin account takeover with no MFA | `application/auth/dal.ts`, `services/identity/totp.ts`, `services/identity/login.ts` | `services/identity/sessions.ts`, `services/identity/step-up.ts`, `application/auth/session-cookies.ts`, `application/http/forms.ts`, `proxy.ts`, `edge/security-headers.ts`, `app/(console)/`, `app/(employee)/`, `app/_components/bfcache-guard.tsx`, `partners/mock-mail/mail.ts`, `migrations/0011_bank_change_integrity.sql`, `scripts/lib/seed.ts` | `e2e/full-flow.spec.ts`, `tests/data/route-wrapper.test.ts`, `tests/data/ui-layer.test.ts`, `tests/threats/D25-known-devices.test.ts`, `tests/threats/L0-01-admin-mfa.test.ts`, `tests/threats/L0-01-route-groups.test.ts`, `tests/threats/L2-11-bank-changes.test.ts` | 43 (8 primary, 36 DiD) |
+| L0-11 | Platform-wide PayrollHub outage on a pay date | `edge/waf.ts`, `edge/route-policy.ts`, `proxy.ts`, `next.config.ts` | `services/engine/engine-service.ts`, `data/db/tables.ts`, `edge/rate-limiter.ts` | `e2e/full-flow.spec.ts`, `tests/threats/D20-redis-down.test.ts`, `tests/threats/L0-01-route-groups.test.ts`, `tests/threats/L0-11-edge-filtering.test.ts`, `tests/threats/L0-11-route-ceilings.test.ts`, `tests/threats/L2-02-payroll-engine.test.ts`, `tests/threats/L2-04-route-handlers.test.ts` | 11 (6 primary, 5 DiD) |
+| L2-18 | Approval tokens do not expire or rotate | `services/approval/approval-service.ts`, `data/keys/kms.ts`, `scripts/rotate-key.ts` | `migrations/0007_approval_immutability.sql` | `tests/threats/L2-01-approval-tokens.test.ts`, `tests/threats/L2-02-payroll-engine.test.ts` | 6 (5 primary, 1 DiD) |
+| L1-20 | Forged SSO assertion signs in as any employee of a tenant | `services/identity/sso.ts`, `app/api/auth/sso/[tenantId]/callback/route.ts` | `services/identity/repository.ts`, `partners/mock-idp/idp.ts` | `tests/threats/L1-20-sso-assertion.test.ts` | 15 (11 primary, 4 DiD) |
+| L2-11 | ACH generator pays a bank account whose change was never verified | `services/bank-account/bank-account-service.ts`, `services/bank-account/repository.ts`, `app/api/tenants/[tenantId]/bank-account/`, `app/(employee)/employee/bank-change/`, `partners/mock-mail/mail.ts` | `migrations/0011_bank_change_integrity.sql`, `services/bank-account/validation.ts`, `services/bank-account/notify.ts`, `services/engine/run-content.ts`, `services/ach/ach-service.ts`, `application/http/forms.ts`, `app/(console)/admin/admin-console.tsx`, `eslint.config.mjs` | `e2e/full-flow.spec.ts`, `tests/data/route-wrapper.test.ts`, `tests/data/ui-layer.test.ts`, `tests/threats/L0-01-route-groups.test.ts`, `tests/threats/L2-02-payroll-engine.test.ts`, `tests/threats/L2-11-bank-changes.test.ts`, `tests/threats/L2-13-ach-idempotency.test.ts` | 26 (12 primary, 15 DiD) |
+| L2-12 | Generated ACH file in logs exposes bank and routing numbers | `data/log/logger.ts`, `instrumentation.ts`, `instrumentation-node.ts`, `application/http/route.ts` | `services/ach/ach-service.ts`, `services/ach/repository.ts`, `data/crypto/field-encryption.ts` | `tests/data/encryption-at-rest.test.ts`, `tests/threats/L1-19-service-tokens.test.ts`, `tests/threats/L2-11-bank-changes.test.ts`, `tests/threats/L2-12-log-redaction.test.ts`, `tests/threats/L2-13-ach-idempotency.test.ts` | 20 (14 primary, 6 DiD) |
+| L1-22 | Unsigned ACH batch altered in transit to redirect funds | `services/ach/ach-service.ts`, `services/ach/nacha.ts`, `data/keys/kms.ts`, `partners/mock-bank/server.ts` | `services/ach/bank-client.ts`, `scripts/lib/pki.ts` | `tests/threats/L1-22-ach-signing.test.ts` | 7 (4 primary, 3 DiD) |
+<!-- traceability:end -->
 
 ## Deviations from Assignment 5
 
@@ -507,8 +563,11 @@ Kept up to date as each decision is made. Each entry is accepted by the author.
   must also be a loopback address, or the server exits at startup.
 - **The development mailbox is a stand-in** for each employee's real email (D13, D30). Its passwords are random
   development values in `.data/dev-credentials.txt`; real deployments send real email to a verified address.
-- **Seed staff TOTP secrets are fixed values** (documented here and in `scripts/lib/seed.ts`) so the test suite can
-  compute codes; they protect only local development data.
+- **Seed employee IdP passwords are fixed, documented values** (staff passwords, TOTP secrets, and mailbox passwords
+  are random per install). They protect only the stand-in IdP's local development data.
+- **Browsers without Fetch Metadata cannot submit forms** (Safari before 16.4, Firefox before 90, Chrome before 76):
+  under `no-referrer` they send `Origin: null`, which the D39 fallback refuses. Non-browser clients calling session
+  or public routes must send an `Origin` header naming the app's origin.
 - **Local HTTP:** locally the app is plain `http://localhost`, so there is no HSTS and the CSP omits
   `upgrade-insecure-requests`; a deployment behind TLS adds both.
 - **No tax forms** in the Employee portal (DV-45).

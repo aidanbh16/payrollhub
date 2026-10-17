@@ -7,7 +7,7 @@ import { POST as disbursePOST } from "@/app/api/tenants/[tenantId]/runs/[runId]/
 import { mintAsBff } from "@/application/mint-as-bff";
 import { withTenant } from "@/data/db/tenant-scope";
 import type { MockBank } from "@/partners/mock-bank/server";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { achIdempotencyKey, batchIdFor } from "@/services/ach/ach-service";
 import { AchFormatError, buildAchFile, checkControlTotals, readControls } from "@/services/ach/nacha";
 import { getAchBatchForRun } from "@/services/ach/repository";
@@ -39,7 +39,7 @@ beforeAll(async () => {
   bank = await startBank();
   useFakeClock();
   approver = new Browser();
-  await staffLogin(approver, "acme", acme.approver.email, acme.approver.password, acme.approver.totpSecret);
+  await staffLogin(approver, "acme", acme.approver.email, seededPassword(acme.approver.email), seededTotpSecret(acme.approver.email));
 });
 
 afterAll(async () => {
@@ -47,7 +47,7 @@ afterAll(async () => {
   vi.restoreAllMocks();
 });
 
-describe("L2-13: one run, at most one batch", () => {
+describe("[L2-13] one run, at most one batch", () => {
   it("a double submit returns the one existing batch; the bank receives it once", async () => {
     const runId = await computedRun(approver);
     const first = await disburse(runId);
@@ -103,7 +103,7 @@ describe("L2-13: one run, at most one batch", () => {
   });
 });
 
-describe("L2-13: only a computed run, built from its pay results", () => {
+describe("[L2-13] only a computed run, built from its pay results", () => {
   it("refuses a run that is not computed, creating nothing", async () => {
     const draft = randomUUID();
     const { hrAdminId } = idsFor("acme");
@@ -111,7 +111,7 @@ describe("L2-13: only a computed run, built from its pay results", () => {
     await expect(disburse(draft)).rejects.toThrow(new ConflictError("Only a computed run can be sent to the bank"));
 
     advance(31);
-    const approve = await approver.json(approvePOST, `/api/tenants/acme/runs/${draft}/approve`, { code: totpNow(acme.approver.totpSecret) }, { tenantId: "acme", runId: draft });
+    const approve = await approver.json(approvePOST, `/api/tenants/acme/runs/${draft}/approve`, { code: totpNow(seededTotpSecret(acme.approver.email)) }, { tenantId: "acme", runId: draft });
     expect(approve.status).toBe(200);
     await expect(disburse(draft)).rejects.toBeInstanceOf(ConflictError); // approved, not computed
     expect(batchRows(draft)).toHaveLength(0);
@@ -160,7 +160,7 @@ describe("L2-13: only a computed run, built from its pay results", () => {
     expect(() => checkControlTotals(sneaky, { batchId: input.batchId, entryCount: 1, totalCreditCents: 243_750 })).not.toThrow();
   });
 
-  it("D35: an account retired after compute is not paid; the run is closed and cannot be approved again", async () => {
+  it("[L2-11 DiD] D35: an account retired after compute is not paid; the run is closed and cannot be approved again", async () => {
     const runId = await computedRun(approver);
     const [aliceResult] = withTenant("acme", (s) => listPayResults(s, runId));
     // The employee confirms a bank change after the run was computed.
@@ -175,7 +175,7 @@ describe("L2-13: only a computed run, built from its pay results", () => {
     expect(batchRows(runId)).toHaveLength(0);
 
     advance(31);
-    const again = await approver.json(approvePOST, `/api/tenants/acme/runs/${runId}/approve`, { code: totpNow(acme.approver.totpSecret) }, { tenantId: "acme", runId });
+    const again = await approver.json(approvePOST, `/api/tenants/acme/runs/${runId}/approve`, { code: totpNow(seededTotpSecret(acme.approver.email)) }, { tenantId: "acme", runId });
     expect(again.status).toBe(409);
     expect((await again.json()).error).toMatch(/Create a new run/);
     withTenant("acme", () =>
@@ -187,7 +187,7 @@ describe("L2-13: only a computed run, built from its pay results", () => {
   });
 });
 
-describe("L2-13: the request carries nothing, and nothing comes back but metadata", () => {
+describe("[L2-13 DiD] the request carries nothing, and nothing comes back but metadata", () => {
   const internal = async (body: string, runId: string) =>
     internalDisbursePOST(
       new NextRequest(`http://localhost:3000/api/internal/ach/tenants/acme/runs/${runId}/disburse`, {
@@ -230,11 +230,11 @@ describe("L2-13: the request carries nothing, and nothing comes back but metadat
     for (const e of acme.employees) expect(text).not.toContain(e.accountNumber);
     // An HR Admin or employee cannot send.
     const admin = new Browser();
-    await staffLogin(admin, "acme", acme.hrAdmin.email, acme.hrAdmin.password, acme.hrAdmin.totpSecret);
+    await staffLogin(admin, "acme", acme.hrAdmin.email, seededPassword(acme.hrAdmin.email), seededTotpSecret(acme.hrAdmin.email));
     expect((await admin.json(disbursePOST, `/api/tenants/acme/runs/${runId}/disburse`, {}, { tenantId: "acme", runId })).status).toBe(403);
   });
 
-  it("no seeded account or routing number appears in any console output from this file", () => {
+  it("[L2-12] no seeded account or routing number appears in any console output from this file", () => {
     const text = output.join("\n");
     expect(text).toContain("ach.batch_sent");
     for (const t of SEED_TENANTS) for (const e of t.employees) {

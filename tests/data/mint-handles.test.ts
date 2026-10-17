@@ -18,7 +18,7 @@ const handles = {
   direct: 'import { mintServiceToken } from "@/services/identity/service-tokens";\nvoid mintServiceToken;\n',
 };
 
-describe("DV-26: per-service minting handles, enforced by lint", () => {
+describe("[L1-19] DV-26: per-service minting handles, enforced by lint", () => {
   it("a service can use its own handle", async () => {
     expect(await mintErrors("services/engine/example.ts", handles.engine)).toEqual([]);
     expect(await mintErrors("app/api/example/route.ts", handles.bff)).toEqual([]);

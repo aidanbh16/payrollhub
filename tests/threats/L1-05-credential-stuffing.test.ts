@@ -14,7 +14,7 @@ const FREE = LIMITS.unknownDevice.free;
 const MAX = LIMITS.account.max;
 const fresh = () => `${randomUUID()}@acme.test`;
 
-describe("L1-05: per-account login throttle", () => {
+describe("[L1-05] per-account login throttle", () => {
   it("a flood against one account hits the ceiling no matter what IP headers the client sends", async () => {
     const email = fresh();
     const results = await verdicts(

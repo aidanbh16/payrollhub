@@ -13,7 +13,7 @@ import { idsFor, rawSqlite, setupSeededDatabase } from "../helpers/database";
 
 setupSeededDatabase();
 
-describe("L2-16: tenant A cannot write tenant B's rows", () => {
+describe("[L2-16] tenant A cannot write tenant B's rows", () => {
   describe("through the repository", () => {
     it("an update in tenant A's scope cannot change tenant B's row", () => {
       const [globexEmployee] = idsFor("globex").employeeIds;
@@ -84,7 +84,7 @@ describe("L2-16: tenant A cannot write tenant B's rows", () => {
       expect(() => db.prepare("DELETE FROM bank_account").run()).toThrow(/tenant isolation: delete/);
     });
 
-    it("service grants are writable only in a platform scope", () => {
+    it("[L1-19 DiD] service grants are writable only in a platform scope", () => {
       const insertGrant = "INSERT INTO service_grant VALUES (?, 'engine', '/api/internal/ach', 'ach:build', 0)";
       expect(() => rawSqlite().prepare(insertGrant).run("g1")).toThrow(/platform scope/);
       withTenant("acme", () => {

@@ -25,7 +25,7 @@ function trackedBody(bytes: number) {
   return { state, stream };
 }
 
-describe("L0-11: request filtering before any body is read", () => {
+describe("[L0-11] request filtering before any body is read", () => {
   it("an oversized body is rejected with 413 and never read", async () => {
     const { state, stream } = trackedBody(10_000);
     const req = new NextRequest(`${ORIGIN}/api/auth/login`, {
@@ -68,7 +68,7 @@ describe("L0-11: request filtering before any body is read", () => {
   });
 });
 
-describe("L0-11: limits are independent per route", () => {
+describe("[L0-11] limits are independent per route", () => {
   it("an account locked out of staff sign-in does not lock the IdP form or any other route", async () => {
     const email = `${randomUUID()}@acme.test`;
     await verdicts(times(LIMITS.account.max + 1, () => () => staffLogin(email)));

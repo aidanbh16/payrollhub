@@ -30,7 +30,7 @@ function readSources(statements: string[]): string[] {
     .flatMap((sql) => [...sql.matchAll(/\b(?:from|join)\s+[`"]?(\w+)[`"]?/gi)].map((m) => m[1]));
 }
 
-describe("D4: reads go through the views, not the base tables", () => {
+describe("[L1-14] D4: reads go through the views, not the base tables", () => {
   it("every SELECT issued by every repository read function targets a v_ view", () => {
     const statements: string[] = [];
     const stop = observeStatements((sql) => statements.push(sql));
@@ -85,7 +85,7 @@ describe("D4: reads go through the views, not the base tables", () => {
   });
 });
 
-describe("D4: the test that fails on direct base-table access", () => {
+describe("[L1-14] D4: the test that fails on direct base-table access", () => {
   it("no application source file imports the raw handle or base tables, or reads base tables with raw SQL", () => {
     const { files, violations } = scanApplicationSource();
     expect(files.length).toBeGreaterThan(10);
@@ -113,7 +113,7 @@ describe("D4: the test that fails on direct base-table access", () => {
   });
 });
 
-describe("D23: the sql tag is allowed only for CHECK constraints in data/db/tables.ts", () => {
+describe("[L1-14 DiD] [L2-16 DiD] D23: the sql tag is allowed only for CHECK constraints in data/db/tables.ts", () => {
   it("no source file, including data/, uses the sql tag beyond that exception", () => {
     const { files, violations } = scanSqlTagUsage();
     expect(files).toContain("data/db/tables.ts");

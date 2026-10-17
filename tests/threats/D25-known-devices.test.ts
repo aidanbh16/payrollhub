@@ -6,7 +6,7 @@ import { POST as mfaPOST } from "@/app/api/auth/mfa/route";
 import { KNOWN_DEVICE_COOKIE, accountHash } from "@/edge/known-devices";
 import { LIMITS } from "@/edge/route-policy";
 import { proxy } from "@/proxy";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { setupSeededDatabase } from "../helpers/database";
 import { formPost, staffLogin as staffLoginRequest, times, verdict, verdicts } from "../helpers/edge";
 import { Browser, advance, staffLogin, totpNow, useFakeClock } from "../helpers/http";
@@ -28,22 +28,22 @@ const withKnown = (email: string, token: string) => staffLoginRequest(email, { c
 beforeAll(async () => {
   useFakeClock();
   const browser = new Browser();
-  await staffLogin(browser, "acme", admin.email, admin.password, admin.totpSecret);
+  await staffLogin(browser, "acme", admin.email, seededPassword(admin.email), seededTotpSecret(admin.email));
   adminDevice = browser.jar.get(KNOWN_DEVICE_COOKIE)!;
 });
 afterAll(() => vi.useRealTimers());
 
-describe("D25: the known-device cookie", () => {
+describe("[L1-05] [L0-01 DiD] D25: the known-device cookie", () => {
   it("is set only after a successful MFA step, and Redis stores only its hash, under that account", async () => {
     advance(31);
     const browser = new Browser();
-    await browser.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: admin.password });
+    await browser.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: seededPassword(admin.email) });
     expect(browser.jar.has(KNOWN_DEVICE_COOKIE)).toBe(false); // not after the password step
     await browser.post(mfaPOST, "/api/auth/mfa", { code: "000000" });
     expect(browser.jar.has(KNOWN_DEVICE_COOKIE)).toBe(false); // not after a failed code
     advance(31);
-    await browser.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: admin.password });
-    await browser.post(mfaPOST, "/api/auth/mfa", { code: totpNow(admin.totpSecret) });
+    await browser.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: seededPassword(admin.email) });
+    await browser.post(mfaPOST, "/api/auth/mfa", { code: totpNow(seededTotpSecret(admin.email)) });
     const token = browser.jar.get(KNOWN_DEVICE_COOKIE)!;
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
@@ -82,7 +82,7 @@ describe("D25: the known-device cookie", () => {
   });
 });
 
-describe("D25: unknown-device delays are retry-after refusals, not server sleeps", () => {
+describe("[L1-05] [L0-01 DiD] D25: unknown-device delays are retry-after refusals, not server sleeps", () => {
   it("after the free attempts, each next attempt must wait 1 s, 2 s, 4 s ...", async () => {
     const email = `${randomUUID()}@acme.test`;
     await verdicts(times(FREE, () => () => staffLoginRequest(email)));
@@ -114,7 +114,7 @@ describe("D25: unknown-device delays are retry-after refusals, not server sleeps
   });
 });
 
-describe("D25: known devices skip the login-class ceiling", () => {
+describe("[L1-05] [L0-01 DiD] D25: known devices skip the login-class ceiling", () => {
   it("a flood that exhausts the login ceiling blocks unknown devices but not the admin's known device", async () => {
     let flood: string | number = "passed";
     for (let i = 0; i < LIMITS.classCeiling.login.max + 5 && flood === "passed"; i++) {
@@ -125,7 +125,7 @@ describe("D25: known devices skip the login-class ceiling", () => {
     // Fresh known-device budget for the admin: a new device registered through a real MFA sign-in.
     advance(31);
     const browser = new Browser();
-    await staffLogin(browser, "acme", admin.email, admin.password, admin.totpSecret);
+    await staffLogin(browser, "acme", admin.email, seededPassword(admin.email), seededTotpSecret(admin.email));
     const known = browser.jar.get(KNOWN_DEVICE_COOKIE)!;
     expect(await verdict(withKnown(admin.email, known))).toBe("passed");
 

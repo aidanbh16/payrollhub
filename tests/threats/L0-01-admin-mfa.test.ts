@@ -9,7 +9,7 @@ import { SESSION_COOKIE } from "@/application/auth/cookie-names";
 import { verifySession } from "@/application/auth/dal";
 import { withTenant } from "@/data/db/tenant-scope";
 import { LOGIN_ROUTES } from "@/edge/login-routes";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { findUserByEmail } from "@/services/identity/repository";
 import { TTL, createSession, parseSessionCookie, readSession, sha256 } from "@/services/identity/sessions";
 import { stepUp } from "@/services/identity/step-up";
@@ -32,7 +32,7 @@ const approver = acme.approver;
 async function signedInAdmin() {
   advance(31); // a fresh TOTP step, so this login's code is not a replay of the previous test's
   const browser = new Browser();
-  await staffLogin(browser, "acme", admin.email, admin.password, admin.totpSecret);
+  await staffLogin(browser, "acme", admin.email, seededPassword(admin.email), seededTotpSecret(admin.email));
   return browser;
 }
 
@@ -52,11 +52,11 @@ const sessionRow = (cookie: string) =>
     | { revoked_at: number | null }
     | undefined;
 
-describe("L0-01: required MFA for HR Admin and Payroll Approver", () => {
+describe("[L0-01] required MFA for HR Admin and Payroll Approver", () => {
   it("a correct password without the TOTP step cannot reach an admin route", async () => {
     advance(31);
     const browser = new Browser();
-    await browser.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: admin.password });
+    await browser.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: seededPassword(admin.email) });
     expect(browser.session).toBeDefined();
     expect((await browser.get(adminMeGET, "/api/admin/me")).status).toBe(401);
   });
@@ -88,11 +88,11 @@ describe("L0-01: required MFA for HR Admin and Payroll Approver", () => {
   it("a Payroll Approver session hitting an admin route gets 403", async () => {
     advance(31);
     const browser = new Browser();
-    await staffLogin(browser, "acme", approver.email, approver.password, approver.totpSecret);
+    await staffLogin(browser, "acme", approver.email, seededPassword(approver.email), seededTotpSecret(approver.email));
     expect((await browser.get(adminMeGET, "/api/admin/me")).status).toBe(403);
   });
 
-  it("Proxy turns away a protected request with no session cookie before anything renders", async () => {
+  it("[L0-01 DiD] Proxy turns away a protected request with no session cookie before anything renders", async () => {
     const page = await proxy(new Browser().request("/admin"));
     expect(page.status).toBe(307);
     expect(location(page)).toBe("/login");
@@ -100,18 +100,18 @@ describe("L0-01: required MFA for HR Admin and Payroll Approver", () => {
   });
 });
 
-describe("session identifiers", () => {
+describe("[L0-01 DiD] session identifiers", () => {
   it("issues a new session id at login and again after MFA; the earlier ids stop working", async () => {
     const browser = await signedInAdmin();
     const before = browser.session!;
 
     advance(31);
-    await browser.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: admin.password });
+    await browser.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: seededPassword(admin.email) });
     const pending = browser.session!;
     expect(pending).not.toBe(before);
     expect(sessionRow(before)?.revoked_at).not.toBeNull(); // the session presented at login was revoked
 
-    await browser.post(mfaPOST, "/api/auth/mfa", { code: totpNow(admin.totpSecret) });
+    await browser.post(mfaPOST, "/api/auth/mfa", { code: totpNow(seededTotpSecret(admin.email)) });
     const final = browser.session!;
     expect(final).not.toBe(pending);
     expect(final).not.toBe(before);
@@ -127,16 +127,16 @@ describe("session identifiers", () => {
   });
 });
 
-describe("TOTP code reuse", () => {
+describe("[L0-01] TOTP code reuse", () => {
   it("rejects a code that was already used in its time window", async () => {
     advance(31);
-    const code = totpNow(admin.totpSecret);
+    const code = totpNow(seededTotpSecret(admin.email));
     const first = new Browser();
-    await first.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: admin.password });
+    await first.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: seededPassword(admin.email) });
     expect(location(await first.post(mfaPOST, "/api/auth/mfa", { code }))).toBe("/admin");
 
     const second = new Browser();
-    await second.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: admin.password });
+    await second.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: seededPassword(admin.email) });
     expect(location(await second.post(mfaPOST, "/api/auth/mfa", { code }))).toBe("/login?error=signin");
 
     // The same code is also refused for the approval-time step-up.
@@ -146,24 +146,24 @@ describe("TOTP code reuse", () => {
 
   it("rejects a code from an earlier time step once a later one has been used", async () => {
     advance(31);
-    const earlier = totpNow(admin.totpSecret);
+    const earlier = totpNow(seededTotpSecret(admin.email));
     advance(30);
     const browser = new Browser();
-    await staffLogin(browser, "acme", admin.email, admin.password, admin.totpSecret);
+    await staffLogin(browser, "acme", admin.email, seededPassword(admin.email), seededTotpSecret(admin.email));
     expect((await browser.get(adminMeGET, "/api/admin/me")).status).toBe(200);
 
     const late = new Browser();
-    await late.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: admin.password });
+    await late.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: seededPassword(admin.email) });
     expect(location(await late.post(mfaPOST, "/api/auth/mfa", { code: earlier }))).toBe("/login?error=signin");
   });
 });
 
-describe("approval-time step-up (called by Layer 6)", () => {
+describe("[L0-01 DiD] [L2-01 DiD] approval-time step-up (called by Layer 6)", () => {
   it("a fresh code re-verifies MFA and replaces the session with a new id", async () => {
     const browser = await signedInAdmin();
     const claims = verifySession(cookies(browser))!;
     advance(31);
-    const result = stepUp(claims, { code: totpNow(admin.totpSecret), deviceId: browser.device });
+    const result = stepUp(claims, { code: totpNow(seededTotpSecret(admin.email)), deviceId: browser.device });
     expect(result).not.toBeNull();
     expect(result!.cookie).not.toBe(browser.session);
     expect(readSession(browser.session, browser.device)).toBeNull(); // pre-step-up session revoked
@@ -176,15 +176,15 @@ describe("approval-time step-up (called by Layer 6)", () => {
     expect(stepUp(claims, { code: "000000", deviceId: browser.device })).toBeNull();
 
     const employee = await signedInEmployee();
-    expect(stepUp(verifySession(cookies(employee))!, { code: totpNow(admin.totpSecret), deviceId: employee.device })).toBeNull();
+    expect(stepUp(verifySession(cookies(employee))!, { code: totpNow(seededTotpSecret(admin.email)), deviceId: employee.device })).toBeNull();
 
     await browser.post(logoutPOST, "/api/auth/logout", {});
     advance(31);
-    expect(stepUp(claims, { code: totpNow(admin.totpSecret), deviceId: browser.device })).toBeNull();
+    expect(stepUp(claims, { code: totpNow(seededTotpSecret(admin.email)), deviceId: browser.device })).toBeNull();
   });
 });
 
-describe("session revocation and lifetime", () => {
+describe("[L0-01 DiD] session revocation and lifetime", () => {
   it("logout sets revoked_at and the same cookie stops working on the very next request", async () => {
     const browser = await signedInAdmin();
     const cookie = browser.session!;
@@ -214,27 +214,28 @@ describe("session revocation and lifetime", () => {
   });
 });
 
-describe("generic login failures", () => {
-  const attempts = {
-    "unknown organization": { organization: "initech", email: admin.email, password: admin.password },
-    "unknown email": { organization: "acme", email: "nobody@acme.test", password: admin.password },
+describe("[L0-01 DiD] generic login failures", () => {
+  // A function, not a constant: the password comes from the credentials file, which exists only after the seed.
+  const attempts = () => ({
+    "unknown organization": { organization: "initech", email: admin.email, password: seededPassword(admin.email) },
+    "unknown email": { organization: "acme", email: "nobody@acme.test", password: seededPassword(admin.email) },
     "wrong password": { organization: "acme", email: admin.email, password: "Wrong-Password-1!" },
-    "employee (SSO only)": { organization: "acme", email: "alice@acme.test", password: admin.password },
-    "malformed organization": { organization: "../ACME", email: admin.email, password: admin.password },
-  };
+    "employee (SSO only)": { organization: "acme", email: "alice@acme.test", password: seededPassword(admin.email) },
+    "malformed organization": { organization: "../ACME", email: admin.email, password: seededPassword(admin.email) },
+  });
 
   it("every wrong field produces the same responses at both steps", async () => {
     advance(31);
     const shapes = new Set<string>();
-    for (const form of Object.values(attempts)) {
+    for (const form of Object.values(attempts())) {
       const browser = new Browser();
       const step1 = await browser.post(loginPOST, "/api/auth/login", form);
-      const step2 = await browser.post(mfaPOST, "/api/auth/mfa", { code: totpNow(admin.totpSecret) });
+      const step2 = await browser.post(mfaPOST, "/api/auth/mfa", { code: totpNow(seededTotpSecret(admin.email)) });
       shapes.add(JSON.stringify([step1.status, location(step1), !!browser.session || "cleared", step2.status, location(step2)]));
     }
     // Right password, wrong code: same answers.
     const browser = new Browser();
-    const step1 = await browser.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: admin.password });
+    const step1 = await browser.post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: seededPassword(admin.email) });
     const step2 = await browser.post(mfaPOST, "/api/auth/mfa", { code: "123456" });
     shapes.add(JSON.stringify([step1.status, location(step1), !!browser.session || "cleared", step2.status, location(step2)]));
 
@@ -251,20 +252,20 @@ describe("generic login failures", () => {
       }
       return Math.min(...samples);
     };
-    const correct = { organization: "acme", email: admin.email, password: admin.password };
+    const correct = { organization: "acme", email: admin.email, password: seededPassword(admin.email) };
     const durations = [await time(correct)];
-    for (const form of Object.values(attempts)) durations.push(await time(form));
+    for (const form of Object.values(attempts())) durations.push(await time(form));
     // Every path runs exactly one scrypt verification (~tens of ms), so no path is several times faster.
     expect(Math.max(...durations) / Math.min(...durations)).toBeLessThan(2);
   });
 
   it("refuses a cross-origin login post", async () => {
-    const res = await new Browser().post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: admin.password }, {}, { origin: "https://evil.example" });
+    const res = await new Browser().post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: seededPassword(admin.email) }, {}, { origin: "https://evil.example" });
     expect(res.status).toBe(403);
   });
 });
 
-describe("rate-limiter hook for Layer 4 (L1-05)", () => {
+describe("[L1-05] [L0-01 DiD] rate-limiter hook for Layer 4", () => {
   it("lists PayrollHub's login, the MFA step, and the stand-in IdP's login form", () => {
     const covers = (path: string) => LOGIN_ROUTES.some((r) => r.pattern.test(path));
     expect(covers("/api/auth/login")).toBe(true);

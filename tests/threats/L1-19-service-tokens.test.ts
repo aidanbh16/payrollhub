@@ -6,7 +6,7 @@ import { GET as internalBatchGET } from "@/app/api/internal/ach/tenants/[tenantI
 import { GET as internalRunGET } from "@/app/api/internal/engine/tenants/[tenantId]/runs/[runId]/route";
 import { withPlatform } from "@/data/db/platform-scope";
 import { withTenant } from "@/data/db/tenant-scope";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { insertAchBatch } from "@/services/ach/repository";
 import { createDraftRun, getRun } from "@/services/engine/engine-service";
 import { insertPayrollRun } from "@/services/engine/repository";
@@ -55,7 +55,7 @@ async function forged(endpoint: ServiceEndpoint) {
 
 const refused = (p: Promise<unknown>) => expect(p).rejects.toBeInstanceOf(ServiceAuthError);
 
-describe("L1-19 in-process: service entry points refuse calls without a valid scoped token", () => {
+describe("[L1-19] in-process: service entry points refuse calls without a valid scoped token", () => {
   it("accepts a token minted for this endpoint and tenant (control case)", async () => {
     const run = await getRun(await mint("approval", "engine.getRun"), { tenantId: "acme", runId: runs.acme });
     expect(run.runId).toBe(runs.acme);
@@ -99,7 +99,7 @@ describe("L1-19 in-process: service entry points refuse calls without a valid sc
   });
 });
 
-describe("L1-19 over HTTP: /api/internal/* refuses calls without a valid scoped token", () => {
+describe("[L1-19] over HTTP: /api/internal/* refuses calls without a valid scoped token", () => {
   const get = (handler: typeof internalRunGET, path: string, params: Record<string, string>, headers: Record<string, string> = {}) =>
     handler(new NextRequest(`http://localhost:3000${path}`, { headers }), { params: Promise.resolve(params) });
   const runPath = (tenantId: string) => `/api/internal/engine/tenants/${tenantId}/runs/${runs[tenantId]}`;
@@ -117,7 +117,7 @@ describe("L1-19 over HTTP: /api/internal/* refuses calls without a valid scoped 
   it("refuses a missing token, even with a signed-in HR Admin's session cookie", async () => {
     expect(await outcome(await runReq("acme"))).toEqual(REFUSED);
     const admin = new Browser();
-    await staffLogin(admin, "acme", SEED_TENANTS[0].hrAdmin.email, SEED_TENANTS[0].hrAdmin.password, SEED_TENANTS[0].hrAdmin.totpSecret);
+    await staffLogin(admin, "acme", SEED_TENANTS[0].hrAdmin.email, seededPassword(SEED_TENANTS[0].hrAdmin.email), seededTotpSecret(SEED_TENANTS[0].hrAdmin.email));
     expect(await outcome(await get(internalRunGET, runPath("acme"), { tenantId: "acme", runId: runs.acme }, { cookie: [...admin.jar].map(([k, v]) => `${k}=${v}`).join("; ") }))).toEqual(REFUSED);
   });
 
@@ -140,7 +140,7 @@ describe("L1-19 over HTTP: /api/internal/* refuses calls without a valid scoped 
     expect(await outcome(await runReq("acme", await forged("engine.getRun")))).toEqual(REFUSED);
   });
 
-  it("the ACH internal route has the same protection and never returns the file body", async () => {
+  it("[L2-12 DiD] the ACH internal route has the same protection and never returns the file body", async () => {
     const path = `/api/internal/ach/tenants/acme/runs/${runs.acme}/batch`;
     const params = { tenantId: "acme", runId: runs.acme };
     expect(await outcome(await get(internalBatchGET, path, params))).toEqual(REFUSED);
@@ -153,7 +153,7 @@ describe("L1-19 over HTTP: /api/internal/* refuses calls without a valid scoped 
   });
 });
 
-describe("L1-19: tokens for the internal money routes are single-use", () => {
+describe("[L1-19] tokens for the internal money routes are single-use", () => {
   const httpRun = (token: string) =>
     internalRunGET(new NextRequest(`http://localhost:3000/api/internal/engine/tenants/acme/runs/${runs.acme}`, { headers: { authorization: `Bearer ${token}` } }), {
       params: Promise.resolve({ tenantId: "acme", runId: runs.acme }),
@@ -199,7 +199,7 @@ describe("L1-19: tokens for the internal money routes are single-use", () => {
   });
 });
 
-describe("L1-19: revoking a grant takes effect immediately", () => {
+describe("[L1-19] revoking a grant takes effect immediately", () => {
   it("a token minted before the grant was revoked is refused afterwards", async () => {
     const token = await mint("approval", "engine.getRun");
     withPlatform(() => {

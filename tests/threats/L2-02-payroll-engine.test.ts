@@ -8,7 +8,7 @@ import { POST as startPOST } from "@/app/api/tenants/[tenantId]/runs/[runId]/sta
 import { mintAsBff } from "@/application/mint-as-bff";
 import { withTenant } from "@/data/db/tenant-scope";
 import { rotateSigningKey } from "@/data/keys/kms";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { insertVerifiedAccount } from "@/services/bank-account/repository";
 import { startRun } from "@/services/engine/engine-service";
 import { computePay } from "@/services/engine/pay-calc";
@@ -50,7 +50,7 @@ function newDraftRun(tenantId = "acme", createdBy = idsFor(tenantId).hrAdminId):
 
 async function approve(runId: string, tenantId = "acme") {
   advance(31);
-  const [browser, secret] = tenantId === "acme" ? [approver, acme.approver.totpSecret] : [globexApprover, globex.approver.totpSecret];
+  const [browser, secret] = tenantId === "acme" ? [approver, seededTotpSecret(acme.approver.email)] : [globexApprover, seededTotpSecret(globex.approver.email)];
   return browser.json(approvePOST, `/api/tenants/${tenantId}/runs/${runId}/approve`, { code: totpNow(secret) }, { tenantId, runId });
 }
 
@@ -77,14 +77,14 @@ const rejected = (p: Promise<unknown>) => expect(p).rejects.toBeInstanceOf(Appro
 beforeAll(async () => {
   useFakeClock();
   approver = new Browser();
-  await staffLogin(approver, "acme", acme.approver.email, acme.approver.password, acme.approver.totpSecret);
+  await staffLogin(approver, "acme", acme.approver.email, seededPassword(acme.approver.email), seededTotpSecret(acme.approver.email));
   advance(31);
   globexApprover = new Browser();
-  await staffLogin(globexApprover, "globex", globex.approver.email, globex.approver.password, globex.approver.totpSecret);
+  await staffLogin(globexApprover, "globex", globex.approver.email, seededPassword(globex.approver.email), seededTotpSecret(globex.approver.email));
 });
 afterAll(() => vi.useRealTimers());
 
-describe("L2-02: a token that is not exactly right never starts a run", () => {
+describe("[L2-02] a token that is not exactly right never starts a run", () => {
   it("unsigned (alg none)", async () => {
     const runId = newDraftRun();
     const good = await approvedToken(runId);
@@ -151,7 +151,7 @@ describe("L2-02: a token that is not exactly right never starts a run", () => {
     withTenant("acme", () => db().prepare("UPDATE employee SET pay_rate_cents = pay_rate_cents - 1 WHERE employee_id = ?").run(employee));
   });
 
-  it("content mismatch: a bank change confirmed after approval (intended: it needs re-approval)", async () => {
+  it("[L2-11 DiD] content mismatch: a bank change confirmed after approval (intended: it needs re-approval)", async () => {
     const runId = newDraftRun();
     const token = await approvedToken(runId);
     const [employee] = idsFor("acme").employeeIds;
@@ -170,7 +170,7 @@ describe("L2-02: a token that is not exactly right never starts a run", () => {
     expect(db().prepare("SELECT count(*) AS n FROM pay_result r JOIN bank_account b ON b.bank_account_id = r.bank_account_id WHERE r.run_id = ? AND b.status = 'retired'").get(runId)).toEqual({ n: 0 });
   });
 
-  it("a retired key (after rotation)", async () => {
+  it("[L2-18] a retired key (after rotation)", async () => {
     const runId = newDraftRun();
     const good = await approvedToken(runId);
     rotateSigningKey("approval-token");
@@ -179,7 +179,7 @@ describe("L2-02: a token that is not exactly right never starts a run", () => {
   });
 });
 
-describe("D27: separation of duties", () => {
+describe("[L2-02 DiD] D27: separation of duties", () => {
   it("the creator of a run cannot approve it, in the service and in the database", async () => {
     const approverUserId = withTenant("acme", (s) => listUsers(s).find((u) => u.role === "approver")!.userId);
     const runId = newDraftRun("acme", approverUserId);
@@ -197,7 +197,7 @@ describe("D27: separation of duties", () => {
   });
 });
 
-describe("D28: the run-content hash is canonical", () => {
+describe("[L2-02] D28: the run-content hash is canonical", () => {
   const content: RunContent = {
     tenantId: "acme",
     runId: "r1",
@@ -259,7 +259,7 @@ describe("a successful run produces exactly one correct set of results", () => {
     expect(() => computePay(100, 10_001)).toThrow();
   });
 
-  it("an employee without a verified account is reported, not skipped or paid elsewhere", async () => {
+  it("[L2-11] an employee without a verified account is reported, not skipped or paid elsewhere", async () => {
     const userId = randomUUID();
     const employeeId = randomUUID();
     withTenant("globex", (s) => {
@@ -274,7 +274,7 @@ describe("a successful run produces exactly one correct set of results", () => {
     expect(db().prepare("SELECT count(*) AS n FROM pay_result WHERE run_id = ? AND employee_id = ?").get(runId, employeeId)).toEqual({ n: 0 });
   });
 
-  it("running the same approved run twice: the second attempt changes nothing", async () => {
+  it("[L2-01] running the same approved run twice: the second attempt changes nothing", async () => {
     const runId = newDraftRun();
     const token = await approvedToken(runId);
     await start(runId, token);
@@ -286,7 +286,7 @@ describe("a successful run produces exactly one correct set of results", () => {
   });
 });
 
-describe("the request cannot supply amounts, employees, or accounts", () => {
+describe("[L2-02 DiD] the request cannot supply amounts, employees, or accounts", () => {
   it("extra fields in the start request are rejected (strict schema) and nothing changes", async () => {
     const runId = newDraftRun();
     const token = await approvedToken(runId);
@@ -308,7 +308,7 @@ describe("the request cannot supply amounts, employees, or accounts", () => {
   });
 });
 
-describe("the BFF reaches the engine only through /api/internal/engine", () => {
+describe("[L2-02 DiD] [L1-19 DiD] the BFF reaches the engine only through /api/internal/engine", () => {
   it("calls the configured internal origin with a single-use service token, whatever Host the client sent", async () => {
     const runId = newDraftRun();
     const token = await approvedToken(runId);
@@ -344,7 +344,7 @@ describe("the BFF reaches the engine only through /api/internal/engine", () => {
     expect(seen[0].auth).toMatch(/^Bearer /);
   });
 
-  it("only the approver the token was issued to can present it", async () => {
+  it("[L2-02] only the approver the token was issued to can present it", async () => {
     const runId = newDraftRun();
     const token = await approvedToken(runId);
     const res = await globexApprover.json(startPOST, `/api/tenants/globex/runs/${runId}/start`, { approvalToken: token }, { tenantId: "globex", runId });
@@ -354,14 +354,14 @@ describe("the BFF reaches the engine only through /api/internal/engine", () => {
 });
 
 // Last in the file: it moves the clock days ahead, and TOTP steps and sessions can only move forward.
-describe("day-early schedule (D29, pending): a late start is allowed and flagged", () => {
+describe("[L0-11 DiD] day-early schedule (D29): a late start is allowed and flagged", () => {
   it("a run started after its scheduled run date computes, returns late: true, and logs a warning", async () => {
     const runId = randomUUID();
     const { hrAdminId } = idsFor("acme");
     withTenant("acme", (s) => insertPayrollRun(s, { runId, payDate: "2026-10-20", status: "draft", createdBy: hrAdminId, approvedBy: null }));
     vi.setSystemTime(new Date("2026-10-20T09:00:00Z")); // the pay date itself, after the 2026-10-19 scheduled run date
     approver = new Browser();
-    await staffLogin(approver, "acme", acme.approver.email, acme.approver.password, acme.approver.totpSecret);
+    await staffLogin(approver, "acme", acme.approver.email, seededPassword(acme.approver.email), seededTotpSecret(acme.approver.email));
     const token = await approvedToken(runId);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const outcome = await start(runId, token);

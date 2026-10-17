@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { decodeJwt, decodeProtectedHeader } from "jose";
+import { decodeJwt, decodeProtectedHeader, type JWTPayload } from "jose";
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { POST as engineStartPOST } from "@/app/api/internal/engine/tenants/[tenantId]/runs/[runId]/start/route";
@@ -10,9 +10,9 @@ import { POST as ssoCallbackPOST } from "@/app/api/auth/sso/[tenantId]/callback/
 import { SESSION_COOKIE } from "@/application/auth/cookie-names";
 import { verifySession } from "@/application/auth/dal";
 import { withTenant } from "@/data/db/tenant-scope";
-import { rotateSigningKey } from "@/data/keys/kms";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
-import { issueApprovalToken } from "@/services/approval/approval-service";
+import { rotateSigningKey, signJwtVersioned } from "@/data/keys/kms";
+import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
+import { issueApprovalToken, verifyApprovalToken } from "@/services/approval/approval-service";
 import { mintAsBff } from "@/application/mint-as-bff";
 import { startRun } from "@/services/engine/engine-service";
 import { getPayrollRun, insertPayrollRun } from "@/services/engine/repository";
@@ -52,7 +52,7 @@ const tokenRows = (runId: string) =>
 async function approve(browser: Browser, runId: string, opts: { tenantId?: string; secret?: string; code?: string } = {}) {
   const tenantId = opts.tenantId ?? "acme";
   advance(31); // a new TOTP time step, so the code is not a replay of the previous one
-  const code = opts.code ?? totpNow(opts.secret ?? acme.approver.totpSecret);
+  const code = opts.code ?? totpNow(opts.secret ?? seededTotpSecret(acme.approver.email));
   return browser.json(approvePOST, `/api/tenants/${tenantId}/runs/${runId}/approve`, { code }, { tenantId, runId });
 }
 
@@ -69,17 +69,25 @@ async function redeem(runId: string, approvalToken: string, tenantId = "acme") {
 
 const rejected = (p: Promise<unknown>) => expect(p).rejects.toBeInstanceOf(ApprovalRejectedError);
 
+/** A token's claims without iat and exp, ready to be signed again with a different lifetime. */
+function withoutTimes(claims: JWTPayload): JWTPayload {
+  const copy = { ...claims };
+  delete copy.iat;
+  delete copy.exp;
+  return copy;
+}
+
 beforeAll(async () => {
   useFakeClock();
   approver = new Browser();
-  await staffLogin(approver, "acme", acme.approver.email, acme.approver.password, acme.approver.totpSecret);
+  await staffLogin(approver, "acme", acme.approver.email, seededPassword(acme.approver.email), seededTotpSecret(acme.approver.email));
   advance(31);
   globexApprover = new Browser();
-  await staffLogin(globexApprover, "globex", globex.approver.email, globex.approver.password, globex.approver.totpSecret);
+  await staffLogin(globexApprover, "globex", globex.approver.email, seededPassword(globex.approver.email), seededTotpSecret(globex.approver.email));
 });
 afterAll(() => vi.useRealTimers());
 
-describe("L2-01: issuing a token requires a fresh MFA step-up", () => {
+describe("[L2-01 DiD] issuing a token requires a fresh MFA step-up", () => {
   it("issues a signed token bound to tenant, run, and approver, recorded in ApprovalToken (control case)", async () => {
     const runId = newDraftRun();
     const token = await approvedToken(runId);
@@ -100,7 +108,7 @@ describe("L2-01: issuing a token requires a fresh MFA step-up", () => {
     }
     // A code already used in its time step is refused too: use it once for another run, then try it here.
     advance(31);
-    const code = totpNow(acme.approver.totpSecret);
+    const code = totpNow(seededTotpSecret(acme.approver.email));
     const other = newDraftRun();
     expect((await approver.json(approvePOST, `/api/tenants/acme/runs/${other}/approve`, { code }, { tenantId: "acme", runId: other })).status).toBe(200);
     const replay = await approver.json(approvePOST, `/api/tenants/acme/runs/${runId}/approve`, { code }, { tenantId: "acme", runId });
@@ -119,7 +127,7 @@ describe("L2-01: issuing a token requires a fresh MFA step-up", () => {
 
     advance(31);
     const claims = verifySession({ get: (n) => (approver.jar.has(n) ? { value: approver.jar.get(n)! } : undefined) })!;
-    const stepped = stepUp(claims, { code: totpNow(acme.approver.totpSecret), deviceId: approver.device })!;
+    const stepped = stepUp(claims, { code: totpNow(seededTotpSecret(acme.approver.email)), deviceId: approver.device })!;
     approver.jar.set(SESSION_COOKIE, stepped.cookie);
     await issueApprovalToken(await mintAsBff("approval.issueToken", "acme"), input, stepped.proof);
     await expect(issueApprovalToken(await mintAsBff("approval.issueToken", "acme"), { ...input, runId: newDraftRun() }, stepped.proof)).rejects.toBeInstanceOf(
@@ -131,8 +139,8 @@ describe("L2-01: issuing a token requires a fresh MFA step-up", () => {
     const runId = newDraftRun();
     advance(31);
     const admin = new Browser();
-    await staffLogin(admin, "acme", acme.hrAdmin.email, acme.hrAdmin.password, acme.hrAdmin.totpSecret);
-    expect((await approve(admin, runId, { secret: acme.hrAdmin.totpSecret })).status).toBe(403);
+    await staffLogin(admin, "acme", acme.hrAdmin.email, seededPassword(acme.hrAdmin.email), seededTotpSecret(acme.hrAdmin.email));
+    expect((await approve(admin, runId, { secret: seededTotpSecret(acme.hrAdmin.email) })).status).toBe(403);
 
     const employee = new Browser();
     const idp = await employee.post(idpLoginPOST, "/mock-idp/acme/login", { email: "alice@acme.test", password: acme.employees[0].idpPassword }, { tenantId: "acme" });
@@ -145,7 +153,7 @@ describe("L2-01: issuing a token requires a fresh MFA step-up", () => {
   });
 });
 
-describe("L2-01: a token works exactly once", () => {
+describe("[L2-01] a token works exactly once", () => {
   it("a replayed token is refused", async () => {
     const runId = newDraftRun();
     const token = await approvedToken(runId);
@@ -205,7 +213,7 @@ describe("L2-01: a token works exactly once", () => {
   });
 });
 
-describe("L2-18: tokens expire and rotate", () => {
+describe("[L2-18] tokens expire and rotate", () => {
   it("an expired token is refused", async () => {
     const runId = newDraftRun();
     const token = await approvedToken(runId);
@@ -226,9 +234,40 @@ describe("L2-18: tokens expire and rotate", () => {
     expect(tokenRows(runId).map((r) => r.key_version).sort()).toEqual([1, 2]);
     expect(await redeem(runId, newToken)).toMatchObject({ runId });
   });
+
+  it("a token re-signed with the live key and a 24-hour lifetime still dies when its record expires", async () => {
+    const runId = newDraftRun();
+    const claims = withoutTimes(decodeJwt(await approvedToken(runId)));
+    advance(4 * 60);
+    // As if the issuer had a bug, or an insider could reach the key: same jti, run, and approver, valid signature.
+    const { token } = await signJwtVersioned("approval-token", claims, 24 * 60 * 60);
+    advance(2 * 60); // 2 minutes old by its own iat, but 6 minutes past the record's issue
+    await rejected(redeem(runId, token));
+    expect(tokenRows(runId).every((r) => r.redeemed_at === null)).toBe(true);
+  });
+
+  it("signature verification caps a token's age at 5 minutes, whatever its exp claim says", async () => {
+    const runId = newDraftRun();
+    const claims = withoutTimes(decodeJwt(await approvedToken(runId)));
+    const { token } = await signJwtVersioned("approval-token", claims, 24 * 60 * 60);
+    await expect(verifyApprovalToken(token)).resolves.toMatchObject({ runId });
+    advance(5 * 60 + 1);
+    await expect(verifyApprovalToken(token)).rejects.toBeInstanceOf(ApprovalRejectedError);
+  });
 });
 
-describe("only drafts can be approved, and approved runs cannot be edited", () => {
+describe("[L2-18 DiD] the token record cannot be extended or erased", () => {
+  it("the database refuses to move a token's expiry, change its key version, or delete it", async () => {
+    const runId = newDraftRun();
+    await approvedToken(runId);
+    const later = Date.now() + 24 * 60 * 60 * 1000;
+    expect(() => rawSqlite().prepare("UPDATE approval_token SET expires_at = ? WHERE run_id = ?").run(later, runId)).toThrow(/write-once/);
+    expect(() => rawSqlite().prepare("UPDATE approval_token SET key_version = key_version + 1 WHERE run_id = ?").run(runId)).toThrow(/write-once/);
+    expect(() => rawSqlite().prepare("DELETE FROM approval_token WHERE run_id = ?").run(runId)).toThrow(/cannot be deleted/);
+  });
+});
+
+describe("[L2-01 DiD] only drafts can be approved, and approved runs cannot be edited", () => {
   it("approving a run that already ran is refused with 409", async () => {
     const runId = newDraftRun();
     await redeem(runId, await approvedToken(runId));
@@ -241,7 +280,7 @@ describe("only drafts can be approved, and approved runs cannot be edited", () =
     await approvedToken(runId);
     advance(31);
     const admin = new Browser();
-    await staffLogin(admin, "acme", acme.hrAdmin.email, acme.hrAdmin.password, acme.hrAdmin.totpSecret);
+    await staffLogin(admin, "acme", acme.hrAdmin.email, seededPassword(acme.hrAdmin.email), seededTotpSecret(acme.hrAdmin.email));
     const res = await admin.json(editRunPOST, `/api/tenants/acme/runs/${runId}`, { payDate: "2026-12-04" }, { tenantId: "acme", runId });
     expect([res.status, (await res.json()).error]).toEqual([409, "Only a draft run can be changed"]);
     withTenant("acme", () => {
@@ -257,7 +296,7 @@ describe("only drafts can be approved, and approved runs cannot be edited", () =
   });
 });
 
-describe("the token never reaches browser storage", () => {
+describe("[L2-01 DiD] the token never reaches browser storage", () => {
   it("is returned only in the JSON body, never in a cookie, and marked no-store", async () => {
     const runId = newDraftRun();
     const before = approver.session;
@@ -272,7 +311,7 @@ describe("the token never reaches browser storage", () => {
 
   it("globex's approver approving a globex run works independently (control)", async () => {
     const runId = newDraftRun("globex");
-    const res = await approve(globexApprover, runId, { tenantId: "globex", secret: globex.approver.totpSecret });
+    const res = await approve(globexApprover, runId, { tenantId: "globex", secret: seededTotpSecret(globex.approver.email) });
     expect(res.status).toBe(200);
   });
 });

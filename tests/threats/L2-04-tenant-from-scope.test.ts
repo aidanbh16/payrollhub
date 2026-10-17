@@ -10,7 +10,7 @@ import { idsFor, setupSeededDatabase } from "../helpers/database";
 
 setupSeededDatabase();
 
-describe("L2-04 backup: the tenant comes from the scope, never from the caller", () => {
+describe("[L2-04 DiD] the tenant comes from the scope, never from the caller", () => {
   it("rejects an insert that names its own tenantId", () => {
     expect(() =>
       withTenant("acme", (s) =>

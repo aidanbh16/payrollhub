@@ -30,7 +30,7 @@ test.afterAll(async () => {
   await Promise.all([admin, approver, alice, bob].map((c) => c.close()));
 });
 
-test("the full flow: MFA sign-in, draft run, step-up approval, run payroll, send to bank, employee bank change", async () => {
+test("[L2-01 DiD] [L2-11 DiD] the full flow: MFA sign-in, draft run, step-up approval, run payroll, send to bank, employee bank change", async () => {
   // --- HR Admin: sign in with MFA, see employees (last 4 only), create a draft run ---
   adminPage = await admin.newPage();
   await adminPage.goto("/login");
@@ -155,7 +155,7 @@ test("the full flow: MFA sign-in, draft run, step-up approval, run payroll, send
   await expect(adminPage.getByTestId("employee-alice@acme.test")).toContainText("ending in 1234");
 });
 
-test("D29: the approver's review shows the late flag", async () => {
+test("[L0-11 DiD] D29: the approver's review shows the late flag", async () => {
   // The review API's late flag is covered by tests/threats/L0-01-route-groups.test.ts with a moved clock; here, the UI
   // renders it when the API says so.
   const page = await approver.newPage();
@@ -170,7 +170,7 @@ test("D29: the approver's review shows the late flag", async () => {
   await page.close();
 });
 
-test("an employee session is refused on every console page and console API", async () => {
+test("[L0-01 DiD] an employee session is refused on every console page and console API", async () => {
   const page = await alice.newPage();
   for (const path of ["/admin", "/approver", `/approver/runs/${runId}`]) {
     await page.goto(path);
@@ -196,7 +196,7 @@ test("an employee session is refused on every console page and console API", asy
   await page.close();
 });
 
-test("one employee cannot view another's pay statement by changing the id in the URL", async () => {
+test("[L0-01 DiD] one employee cannot view another's pay statement by changing the id in the URL", async () => {
   const bp = await bob.newPage();
   await signInEmployee(bp, "bob@acme.test");
   const bobs = await (await bp.request.get("/api/tenants/acme/me/pay-statements")).json();
@@ -213,7 +213,7 @@ test("one employee cannot view another's pay statement by changing the id in the
   await bp.close();
 });
 
-test("security headers are present, and the CSP blocks an injected inline script", async () => {
+test("[L2-01 DiD] [L0-01 DiD] security headers are present, and the CSP blocks an injected inline script", async () => {
   const page = await approver.newPage();
   const doc = await page.goto("/approver");
   const h = doc!.headers();
@@ -256,7 +256,7 @@ test("the TOTP helper works from a clean seed", async () => {
 });
 
 // Last: signs the HR Admin out.
-test("after sign-out, the back button shows nothing sensitive", async () => {
+test("[L0-01 DiD] after sign-out, the back button shows nothing sensitive", async () => {
   await adminPage.goto("/admin");
   await expect(adminPage.getByTestId("employee-alice@acme.test")).toBeVisible();
   await adminPage.getByRole("button", { name: "Sign out" }).click();

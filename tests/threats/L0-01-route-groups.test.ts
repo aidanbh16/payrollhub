@@ -11,7 +11,7 @@ import { GET as reviewGET } from "@/app/api/tenants/[tenantId]/runs/[runId]/revi
 import { GET as runsGET } from "@/app/api/tenants/[tenantId]/runs/route";
 import { POST as idpLoginPOST } from "@/app/mock-idp/[tenantId]/login/route";
 import { withTenant } from "@/data/db/tenant-scope";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { insertPayrollRun } from "@/services/engine/repository";
 import { computedRun } from "../helpers/ach";
 import { idsFor, setupSeededDatabase } from "../helpers/database";
@@ -38,9 +38,9 @@ async function ssoLogin(browser: Browser, tenantId: string, email: string, passw
 
 async function signInAll() {
   admin = new Browser();
-  await staffLogin(admin, "acme", acme.hrAdmin.email, acme.hrAdmin.password, acme.hrAdmin.totpSecret);
+  await staffLogin(admin, "acme", acme.hrAdmin.email, seededPassword(acme.hrAdmin.email), seededTotpSecret(acme.hrAdmin.email));
   approver = new Browser();
-  await staffLogin(approver, "acme", acme.approver.email, acme.approver.password, acme.approver.totpSecret);
+  await staffLogin(approver, "acme", acme.approver.email, seededPassword(acme.approver.email), seededTotpSecret(acme.approver.email));
   alice = new Browser();
   await ssoLogin(alice, "acme", aliceSeed.email, aliceSeed.idpPassword);
   bob = new Browser();
@@ -77,7 +77,7 @@ function sessionRoutes() {
   return parsed;
 }
 
-describe("Section 2.1: an employee session is refused by every console route", () => {
+describe("[L0-01 DiD] Section 2.1: an employee session is refused by every console route", () => {
   // The only routes an employee session may use: the portal's own reads and bank-change actions. Fixed here, so a
   // console route that starts accepting employees fails this test instead of quietly leaving the sweep below.
   const EMPLOYEE_ROUTES = [
@@ -116,7 +116,7 @@ describe("Section 2.1: an employee session is refused by every console route", (
   });
 });
 
-describe("Section 2.1: an employee sees only their own pay statements", () => {
+describe("[L0-01 DiD] Section 2.1: an employee sees only their own pay statements", () => {
   it("another employee's statement id is 'not found', exactly like an id that does not exist", async () => {
     const runId = await computedRun(approver);
     const mine = await (await alice.get(myStatementsGET, "/api/tenants/acme/me/pay-statements", { tenantId: "acme" })).json();
@@ -139,7 +139,7 @@ describe("Section 2.1: an employee sees only their own pay statements", () => {
 });
 
 describe("Consoles show last 4 digits only, pending changes as unverified, and the late flag", () => {
-  it("the HR Admin's employee list has last 4 digits, marks a pending change unverified, and holds no full number", async () => {
+  it("[L2-11 DiD] the HR Admin's employee list has last 4 digits, marks a pending change unverified, and holds no full number", async () => {
     const before = (await (await admin.get(employeesGET, "/api/tenants/acme/employees", { tenantId: "acme" })).json()).employees;
     const aliceId = before.find((e: { email: string }) => e.email === aliceSeed.email).employeeId;
     await admin.json(adminChangePOST, `/api/tenants/acme/employees/${aliceId}/bank-account/changes`, { routingNumber: "091000019", accountNumber: "555566661234" }, { tenantId: "acme", employeeId: aliceId });
@@ -152,7 +152,7 @@ describe("Consoles show last 4 digits only, pending changes as unverified, and t
     for (const n of ["555566661234", "091000019", ...acme.employees.flatMap((e) => [e.accountNumber, e.routingNumber])]) expect(text).not.toContain(n);
   });
 
-  it("the approver's review has totals, exceptions, last 4 digits, and no batch yet", async () => {
+  it("[L2-11 DiD] the approver's review has totals, exceptions, last 4 digits, and no batch yet", async () => {
     const runId = await computedRun(approver);
     const res = await approver.get(reviewGET, `/api/tenants/acme/runs/${runId}/review`, { tenantId: "acme", runId });
     const text = await res.text();
@@ -165,7 +165,7 @@ describe("Consoles show last 4 digits only, pending changes as unverified, and t
   });
 
   // Last: moves the clock past a run's scheduled date.
-  it("D29: a run computed after its scheduled date is flagged late in the list and the review", async () => {
+  it("[L0-11 DiD] D29: a run computed after its scheduled date is flagged late in the list and the review", async () => {
     const runId = randomUUID();
     const { hrAdminId } = idsFor("acme");
     withTenant("acme", (s) => insertPayrollRun(s, { runId, payDate: "2026-10-20", status: "draft", createdBy: hrAdminId, approvedBy: null }));
@@ -178,7 +178,7 @@ describe("Consoles show last 4 digits only, pending changes as unverified, and t
     expect(runs.runs.find((r: { runId: string }) => r.runId === runId).late).toBe(true); // would start late
 
     advance(31);
-    const approved = await approver.json((await import("@/app/api/tenants/[tenantId]/runs/[runId]/approve/route")).POST, `/api/tenants/acme/runs/${runId}/approve`, { code: totpNow(acme.approver.totpSecret) }, { tenantId: "acme", runId });
+    const approved = await approver.json((await import("@/app/api/tenants/[tenantId]/runs/[runId]/approve/route")).POST, `/api/tenants/acme/runs/${runId}/approve`, { code: totpNow(seededTotpSecret(acme.approver.email)) }, { tenantId: "acme", runId });
     const { approvalToken } = await approved.json();
     const { startRun } = await import("@/services/engine/engine-service");
     const { mintAsBff } = await import("@/application/mint-as-bff");

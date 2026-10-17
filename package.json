@@ -12,11 +12,12 @@
     "db:migrate": "tsx --env-file=.env --conditions=react-server scripts/migrate.ts",
     "db:seed": "tsx --env-file=.env --conditions=react-server scripts/seed.ts",
     "db:reset": "tsx --env-file=.env --conditions=react-server scripts/reset.ts",
-    "test": "vitest run",
+    "test": "tsx scripts/run-tests.ts vitest",
     "keys:rotate": "tsx --env-file=.env --conditions=react-server scripts/rotate-key.ts",
     "bank": "tsx --env-file=.env --conditions=react-server scripts/mock-bank.ts",
     "totp": "tsx --env-file=.env --conditions=react-server scripts/totp.ts",
-    "test:e2e": "next build && playwright test"
+    "test:e2e": "tsx scripts/run-tests.ts e2e",
+    "traceability": "tsx scripts/traceability.ts"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",

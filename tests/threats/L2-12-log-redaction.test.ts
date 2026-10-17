@@ -33,7 +33,7 @@ beforeAll(() => {
 });
 afterAll(() => vi.restoreAllMocks());
 
-describe("L2-12: redaction by pattern, in every string", () => {
+describe("[L2-12] redaction by pattern, in every string", () => {
   it("redacts a routing and account number inside an error message", () => {
     log.error("ach.send_failed", { error: new Error(`bank refused entry for routing ${ROUTING} account ${ACCOUNT}`) });
     const entry = lastLine() as { error: { message: string; stack: string } };
@@ -84,7 +84,7 @@ describe("L2-12: redaction by pattern, in every string", () => {
   });
 });
 
-describe("L2-12: every path into the logs goes through redaction", () => {
+describe("[L2-12] every path into the logs goes through redaction", () => {
   it("the route wrapper's unhandled-error path logs redacted details and returns a generic 500", async () => {
     const res = errorResponse(new Error(`update failed for account ${ACCOUNT}`), "req-123");
     expect(res.status).toBe(500);

@@ -17,7 +17,7 @@ const TENANT_VIEWS: TenantView[] = [
 
 setupSeededDatabase();
 
-describe("L1-14: tenant A cannot read tenant B's rows", () => {
+describe("[L1-14] tenant A cannot read tenant B's rows", () => {
   it("every tenant view returns only the scope tenant's rows", () => {
     for (const tenantId of ["acme", "globex"]) {
       withTenant(tenantId, (s) => {

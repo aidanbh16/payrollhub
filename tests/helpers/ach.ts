@@ -4,7 +4,7 @@ import { POST as approvePOST } from "@/app/api/tenants/[tenantId]/runs/[runId]/a
 import { mintAsBff } from "@/application/mint-as-bff";
 import { withTenant } from "@/data/db/tenant-scope";
 import { startMockBank, type MockBank } from "@/partners/mock-bank/server";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededTotpSecret } from "@/scripts/lib/seed";
 import { disburseRun } from "@/services/ach/ach-service";
 import { startRun } from "@/services/engine/engine-service";
 import { insertPayrollRun } from "@/services/engine/repository";
@@ -27,7 +27,7 @@ export async function computedRun(approver: Browser, tenantId = "acme"): Promise
   const createdBy = idsFor(tenantId).hrAdminId;
   withTenant(tenantId, (s) => insertPayrollRun(s, { runId, payDate: "2026-11-27", status: "draft", createdBy, approvedBy: null }));
   advance(31);
-  const secret = SEED_TENANTS.find((t) => t.tenantId === tenantId)!.approver.totpSecret;
+  const secret = seededTotpSecret(SEED_TENANTS.find((t) => t.tenantId === tenantId)!.approver.email);
   const res = await approver.json(approvePOST, `/api/tenants/${tenantId}/runs/${runId}/approve`, { code: totpNow(secret) }, { tenantId, runId });
   expect(res.status).toBe(200);
   const { approvalToken } = await res.json();

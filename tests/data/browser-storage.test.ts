@@ -19,7 +19,7 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-describe("browser storage", () => {
+describe("[L2-01 DiD] browser storage", () => {
   it("no client or server source under app/ or application/ uses a browser storage API", () => {
     const files = [...walk(join(ROOT, "app")), ...walk(join(ROOT, "application"))];
     expect(files).toContain("app/(console)/approver/approve-run.tsx");

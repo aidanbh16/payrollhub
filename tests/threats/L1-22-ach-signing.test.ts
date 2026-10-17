@@ -8,7 +8,7 @@ import { publicSigningKeys, rotateSigningKey, signBytes, verifyBytes } from "@/d
 import type { MockBank } from "@/partners/mock-bank/server";
 import { registerAchKeysWithBank } from "@/scripts/lib/bank-setup";
 import { generateCa, issueCert } from "@/scripts/lib/pki";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { sendBatch } from "@/services/ach/bank-client";
 import { buildAchFile } from "@/services/ach/nacha";
 import { getAchBatchForRun } from "@/services/ach/repository";
@@ -69,12 +69,12 @@ beforeAll(async () => {
   bank = await startBank();
   useFakeClock();
   approver = new Browser();
-  await staffLogin(approver, "acme", acme.approver.email, acme.approver.password, acme.approver.totpSecret);
+  await staffLogin(approver, "acme", acme.approver.email, seededPassword(acme.approver.email), seededTotpSecret(acme.approver.email));
 });
 
 afterAll(() => bank.close());
 
-describe("L1-22: the bank accepts only the exact bytes PayrollHub signed", () => {
+describe("[L1-22] the bank accepts only the exact bytes PayrollHub signed", () => {
   it("a correctly signed batch is accepted", async () => {
     const { bytes } = batchFile();
     const { signature, keyVersion } = signBytes("ach-batch", bytes);
@@ -108,7 +108,7 @@ describe("L1-22: the bank accepts only the exact bytes PayrollHub signed", () =>
     expect(ledger()).toBe(before);
   });
 
-  it("a duplicate batch ID is refused even when correctly signed", async () => {
+  it("[L2-13 DiD] a duplicate batch ID is refused even when correctly signed", async () => {
     const { bytes } = batchFile();
     const { signature, keyVersion } = signBytes("ach-batch", bytes);
     expect((await sendBatch({ bytes, signature, keyVersion })).status).toBe("accepted");
@@ -118,7 +118,7 @@ describe("L1-22: the bank accepts only the exact bytes PayrollHub signed", () =>
   });
 });
 
-describe("L1-22: mTLS, with the bank's certificate pinned", () => {
+describe("[L1-22 DiD] mTLS, with the bank's certificate pinned", () => {
   it("PayrollHub refuses a bank certificate that is not the pinned one, even from the same CA, and sends nothing", async () => {
     const { bytes } = batchFile();
     const { signature, keyVersion } = signBytes("ach-batch", bytes);
@@ -163,7 +163,7 @@ describe("L1-22: mTLS, with the bank's certificate pinned", () => {
   });
 });
 
-describe("L1-22: rotating the ACH key keeps old batches verifiable", () => {
+describe("[L1-22 DiD] rotating the ACH key keeps old batches verifiable", () => {
   it("old batches still verify (at PayrollHub and at the bank); new batches use the new key; the old key cannot sign", async () => {
     const first = await computedRun(approver);
     const sent1 = await disburse(first);

@@ -7,7 +7,7 @@ import { formPost, get, idpLogin, staffLogin, times, verdict, verdicts } from ".
 // starve the others (Assignment 5, Section 2.2: "a flood against the login route cannot throttle payroll approval").
 // This is its own file, so the login ceiling starts unused.
 
-describe("L0-11: per-class ceilings", () => {
+describe("[L0-11] per-class ceilings", () => {
   it("a flood that exhausts the login ceiling leaves API, money, and page routes working", async () => {
     // Rotating accounts, so only the per-class ceiling can trip.
     const ceiling = LIMITS.classCeiling.login.max;

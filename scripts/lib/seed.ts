@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { generateSecret } from "otplib";
 import { withPlatform } from "@/data/db/platform-scope";
 import { withTenant } from "@/data/db/tenant-scope";
 import { provisionSigningKeys } from "@/data/keys/kms";
@@ -10,16 +11,15 @@ import { getTenant, insertIdpConfig, insertServiceGrant, insertTenant, insertUse
 import type { ServiceEndpoint, ServiceName } from "@/services/identity/service-tokens";
 import { hashPassword } from "@/services/identity/password";
 import { provisionBank } from "./bank-setup";
-import { mailboxPasswordFor, otpauthLink, writeDevCredentials } from "./dev-credentials";
+import { mailboxPasswordFor, otpauthLink, readStaffCredential, writeDevCredentials } from "./dev-credentials";
 
-// Development seed data. Every password and TOTP secret here is a development-only value documented in the
-// README; none of them protect anything real. Routing numbers are publicly listed ABA numbers with valid check
+// Development seed data. Employee IdP passwords here are development-only values documented in the README; none of
+// them protect anything real. Staff passwords and TOTP secrets are not here: they are random per install (see
+// writeCredentials). Routing numbers are publicly listed ABA numbers with valid check
 // digits; account numbers are made up.
 
 export interface SeedStaff {
   email: string;
-  password: string;
-  totpSecret: string;
 }
 
 export interface SeedEmployee {
@@ -46,8 +46,8 @@ export const SEED_TENANTS: SeedTenant[] = [
     tenantId: "acme",
     name: "Acme Corporation",
     withholdingRateBp: 2200,
-    hrAdmin: { email: "admin@acme.test", password: "Acme-Admin-Dev-2026!", totpSecret: "MFRW2ZJNMFSG22LOFVSGK5RNORXXI4BB" },
-    approver: { email: "approver@acme.test", password: "Acme-Approver-Dev-2026!", totpSecret: "MFRW2ZJNMFYHA4TWFVSGK5RNORXXI4BB" },
+    hrAdmin: { email: "admin@acme.test" },
+    approver: { email: "approver@acme.test" },
     employees: [
       { email: "alice@acme.test", fullName: "Alice Anders", idpPassword: "Acme-Employee-Dev-2026!", payRateCents: 312_500, routingNumber: "011000015", accountNumber: "730100000101" },
       { email: "bob@acme.test", fullName: "Bob Brandt", idpPassword: "Acme-Employee-Dev-2026!", payRateCents: 287_500, routingNumber: "021000021", accountNumber: "730100000202" },
@@ -58,8 +58,8 @@ export const SEED_TENANTS: SeedTenant[] = [
     tenantId: "globex",
     name: "Globex Inc.",
     withholdingRateBp: 2000,
-    hrAdmin: { email: "admin@globex.test", password: "Globex-Admin-Dev-2026!", totpSecret: "M5WG6YTYFVQWI3LJNYWWIZLWFVXXI4BB" },
-    approver: { email: "approver@globex.test", password: "Globex-Approver-Dev-2026!", totpSecret: "M5WG6YTYFVQXA4DSOYWWIZLWFVXXI4BB" },
+    hrAdmin: { email: "admin@globex.test" },
+    approver: { email: "approver@globex.test" },
     employees: [
       { email: "dana@globex.test", fullName: "Dana Diaz", idpPassword: "Globex-Employee-Dev-2026!", payRateCents: 295_000, routingNumber: "121000358", accountNumber: "840200000404" },
       { email: "eli@globex.test", fullName: "Eli Evans", idpPassword: "Globex-Employee-Dev-2026!", payRateCents: 265_000, routingNumber: "111000025", accountNumber: "840200000505" },
@@ -98,11 +98,20 @@ export const SERVICE_GRANTS: { caller: ServiceName; endpoint: ServiceEndpoint; s
 ];
 
 /**
- * Writes the development credentials file (scripts/lib/dev-credentials.ts) and returns the mailbox passwords. Mailbox
- * passwords are random per install (D30), so knowing a PayrollHub or IdP password, or taking over an HR Admin account,
- * says nothing about any mailbox password; the file stands in for each person knowing their own.
+ * Writes the development credentials file (scripts/lib/dev-credentials.ts) and returns the staff passwords, staff TOTP
+ * secrets, and mailbox passwords. All are random per install: mailbox passwords (D30), so knowing a PayrollHub or IdP
+ * password, or taking over an HR Admin account, says nothing about any mailbox password; staff passwords (144 bits)
+ * and TOTP secrets (160 bits, from otplib's CSPRNG), so no secret that guards an install is in the source or the
+ * README. The file stands in for each person knowing their own.
  */
-function writeCredentials(): { address: string; password: string }[] {
+function writeCredentials(): {
+  staffPasswords: Map<string, string>;
+  totpSecrets: Map<string, string>;
+  mailboxes: { address: string; password: string }[];
+} {
+  const staffEmails = SEED_TENANTS.flatMap((t) => [t.hrAdmin.email, t.approver.email]);
+  const staffPasswords = new Map(staffEmails.map((email) => [email, randomBytes(18).toString("base64url")]));
+  const totpSecrets = new Map(staffEmails.map((email) => [email, generateSecret()]));
   const mailboxes = SEED_TENANTS.flatMap((t) => [t.hrAdmin.email, t.approver.email, ...t.employees.map((e) => e.email)]).map((address) => ({
     address,
     password: randomBytes(18).toString("base64url"),
@@ -113,18 +122,24 @@ function writeCredentials(): { address: string; password: string }[] {
         organization: t.tenantId,
         email: s.email,
         role,
-        password: s.password,
-        totpSecret: s.totpSecret,
-        otpauth: otpauthLink(t.tenantId, s.email, s.totpSecret),
+        password: staffPasswords.get(s.email)!,
+        totpSecret: totpSecrets.get(s.email)!,
+        otpauth: otpauthLink(t.tenantId, s.email, totpSecrets.get(s.email)!),
       })),
     ),
     employees: SEED_TENANTS.flatMap((t) => t.employees.map((e) => ({ organization: t.tenantId, email: e.email, idpPassword: e.idpPassword }))),
     mailboxes,
   });
-  return mailboxes;
+  return { staffPasswords, totpSecrets, mailboxes };
 }
 
 export { mailboxPasswordFor };
+
+/** A seeded staff account's password for this install, from the development credentials file. */
+export const seededPassword = (email: string): string => readStaffCredential(email).password;
+
+/** A seeded staff account's TOTP secret for this install, from the development credentials file. */
+export const seededTotpSecret = (email: string): string => readStaffCredential(email).totpSecret;
 
 export const ssoSubjectFor = (tenantId: string, email: string) => `${tenantId}-idp|${email}`;
 
@@ -132,7 +147,8 @@ export async function seedDatabase(): Promise<void> {
   const now = new Date();
   provisionSigningKeys();
   await provisionBank();
-  await provisionMailboxes(writeCredentials());
+  const { staffPasswords, totpSecrets, mailboxes } = writeCredentials();
+  await provisionMailboxes(mailboxes);
   withPlatform((p) => {
     for (const g of SERVICE_GRANTS) {
       insertServiceGrant(p, { grantId: randomUUID(), callingService: g.caller, targetEndpoint: g.endpoint, scope: g.scope, createdAt: now });
@@ -140,8 +156,8 @@ export async function seedDatabase(): Promise<void> {
   });
   for (const t of SEED_TENANTS) {
     // Hashing and key generation are async, so they run before the synchronous tenant scope opens.
-    const adminHash = await hashPassword(t.hrAdmin.password);
-    const approverHash = await hashPassword(t.approver.password);
+    const adminHash = await hashPassword(staffPasswords.get(t.hrAdmin.email)!);
+    const approverHash = await hashPassword(staffPasswords.get(t.approver.email)!);
     const idp = await provisionTenantIdp(
       t.tenantId,
       t.employees.map((e) => ({ email: e.email, subject: ssoSubjectFor(t.tenantId, e.email), password: e.idpPassword })),
@@ -170,7 +186,7 @@ export async function seedDatabase(): Promise<void> {
           ssoSubject: null,
           status: "active",
           passwordHash,
-          totpSecret: staff.totpSecret,
+          totpSecret: totpSecrets.get(staff.email)!,
         });
       }
 

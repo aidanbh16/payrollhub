@@ -4,11 +4,12 @@ import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 import { POST as loginPOST } from "@/app/api/auth/login/route";
 import { POST as mfaPOST } from "@/app/api/auth/mfa/route";
+import { deleteDatabase, migrateDatabase } from "@/data/db/migrate";
 import { contentSecurityPolicy } from "@/edge/security-headers";
 import nextConfig from "@/next.config";
 import { proxy } from "@/proxy";
 import { currentTotp, readStaffCredential } from "@/scripts/lib/dev-credentials";
-import { SEED_TENANTS, SERVICE_GRANTS, mailboxPasswordFor } from "@/scripts/lib/seed";
+import { SEED_TENANTS, SERVICE_GRANTS, mailboxPasswordFor, seedDatabase, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { ServiceAuthError } from "@/services/errors";
 import { mintServiceToken, type ServiceName } from "@/services/identity/service-tokens";
 import { setupSeededDatabase } from "../helpers/database";
@@ -35,7 +36,7 @@ const read = (file: string) => readFileSync(join(ROOT, file), "utf8");
 const valueImports = (source: string) =>
   [...source.matchAll(/^import\s+(?!type\s)([\s\S]*?)\s+from\s+["']([^"']+)["']/gm)].filter((m) => !/^\{\s*(type\s+\w+\s*,?\s*)+\}$/.test(m[1])).map((m) => m[2]);
 
-describe("Browser security headers (Proxy)", () => {
+describe("[L0-01 DiD] [L2-01 DiD] Browser security headers (Proxy)", () => {
   it("every page gets a fresh nonce-based CSP with no unsafe-inline, unsafe-eval, or strict-dynamic, and no-store", async () => {
     const nonces = new Set<string>();
     for (const path of ["/login", "/admin", "/employee/bank-change/00000000-0000-4000-8000-000000000000?token=abc"]) {
@@ -62,7 +63,7 @@ describe("Browser security headers (Proxy)", () => {
   });
 });
 
-describe("The UI calls only the route handlers", () => {
+describe("[L0-01 DiD] [L2-01 DiD] The UI calls only the route handlers", () => {
   const ui = sourceFiles(join(ROOT, "app")).filter((f) => !f.startsWith("app/api/") && !f.startsWith("app/mock-idp/") && !/\/route\.ts$/.test(f));
 
   it("no page or component imports services, data, partners, edge code, or token minting", () => {
@@ -80,7 +81,7 @@ describe("The UI calls only the route handlers", () => {
   });
 });
 
-describe("DV-43: full account numbers reach ACH Disbursement only", () => {
+describe("[L1-19 DiD] [L2-11 DiD] DV-43: full account numbers reach ACH Disbursement only", () => {
   it("only Bank Account imports its repository, and only ACH imports the payable-account reader", () => {
     const repoImports = appCode.filter((f) => !f.startsWith("services/bank-account/") && /from\s+["'][^"']*services\/bank-account\/repository["']/.test(read(f)));
     const payableImports = appCode.filter(
@@ -104,8 +105,8 @@ describe("Tester credentials from a clean seed", () => {
     for (const t of SEED_TENANTS) {
       for (const staff of [t.hrAdmin, t.approver]) {
         const cred = readStaffCredential(staff.email);
-        expect(cred).toMatchObject({ organization: t.tenantId, password: staff.password, totpSecret: staff.totpSecret });
-        expect(cred.otpauth).toMatch(new RegExp(`^otpauth://totp/.+\\?secret=${staff.totpSecret}&issuer=PayrollHub`));
+        expect(cred).toMatchObject({ organization: t.tenantId, password: seededPassword(staff.email), totpSecret: seededTotpSecret(staff.email) });
+        expect(cred.otpauth).toMatch(new RegExp(`^otpauth://totp/.+\\?secret=${seededTotpSecret(staff.email)}&issuer=PayrollHub`));
       }
       for (const e of t.employees) expect(mailboxPasswordFor(e.email)).toMatch(/^[A-Za-z0-9_-]{24}$/);
     }
@@ -116,5 +117,44 @@ describe("Tester credentials from a clean seed", () => {
     const res = await browser.post(mfaPOST, "/api/auth/mfa", { code: currentTotp("admin@globex.test").code });
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toMatch(/\/admin$/);
+  });
+
+  it("[L0-01 DiD] staff TOTP secrets are random per install: a new seed writes new secrets, and none is in the source or README", async () => {
+    const emails = SEED_TENANTS.flatMap((t) => [t.hrAdmin.email, t.approver.email]);
+    const before = emails.map(seededTotpSecret);
+    for (const secret of before) expect(secret).toMatch(/^[A-Z2-7]{32}$/); // 160 bits, base32
+    expect(new Set(before).size).toBe(emails.length);
+    deleteDatabase();
+    migrateDatabase();
+    await seedDatabase();
+    const after = emails.map(seededTotpSecret);
+    after.forEach((secret, i) => expect(secret).not.toBe(before[i]));
+    // No fixed secret left behind: no 32-character base32 literal in the seed, and none listed in the README.
+    expect(read("scripts/lib/seed.ts")).not.toMatch(/["'][A-Z2-7]{32}["']/);
+    expect(read("README.md")).not.toMatch(/\b[A-Z2-7]{32}\b/);
+  });
+
+  it("[L0-01 DiD] staff passwords are random per install: a new seed writes new passwords, and none is in the source or README", async () => {
+    const emails = SEED_TENANTS.flatMap((t) => [t.hrAdmin.email, t.approver.email]);
+    const before = emails.map(seededPassword);
+    for (const password of before) expect(password).toMatch(/^[A-Za-z0-9_-]{24}$/); // 144 bits
+    expect(new Set(before).size).toBe(emails.length);
+    deleteDatabase();
+    migrateDatabase();
+    await seedDatabase();
+    const after = emails.map(seededPassword);
+    after.forEach((password, i) => expect(password).not.toBe(before[i]));
+    // The old password no longer signs in; the new one does (step 1 answers the same either way, so check the MFA step).
+    const browser = new Browser();
+    await browser.post(loginPOST, "/api/auth/login", { organization: "acme", email: emails[0], password: before[0] });
+    const refused = await browser.post(mfaPOST, "/api/auth/mfa", { code: currentTotp(emails[0]).code });
+    expect(refused.headers.get("location")).toMatch(/\/login\?error=signin$/);
+    // No staff password in the seed, the README, or any staff record of the source: no "password:" literal for staff.
+    expect(read("scripts/lib/seed.ts")).not.toMatch(/(Admin|Approver)-Dev-\d{4}!/);
+    expect(read("README.md")).not.toMatch(/(Admin|Approver)-Dev-\d{4}!/);
+    for (const password of [...before, ...after]) {
+      expect(read("README.md")).not.toContain(password);
+      expect(read("scripts/lib/seed.ts")).not.toContain(password);
+    }
   });
 });

@@ -23,7 +23,7 @@ async function simulatedRequest(tenantId: string, rounds: number): Promise<strin
   return seen;
 }
 
-describe("tenant context under concurrency", () => {
+describe("[L1-14] [L2-16] tenant context under concurrency", () => {
   it("interleaved async requests for different tenants never see each other's rows", async () => {
     const tenants = Array.from({ length: 20 }, (_, i) => (i % 2 === 0 ? "acme" : "globex"));
     const results = await Promise.all(tenants.map((t) => simulatedRequest(t, 15)));

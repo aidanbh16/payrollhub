@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { POST as approvePOST } from "@/app/api/tenants/[tenantId]/runs/[runId]/approve/route";
 import { mintAsBff } from "@/application/mint-as-bff";
 import { withTenant } from "@/data/db/tenant-scope";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { startRun } from "@/services/engine/engine-service";
 import { insertPayrollRun } from "@/services/engine/repository";
 import { RunFailedError } from "@/services/errors";
@@ -35,13 +35,13 @@ const q = (sql: string, ...args: unknown[]) => rawSqlite().prepare(sql).get(...a
 beforeAll(async () => {
   useFakeClock();
   approver = new Browser();
-  await staffLogin(approver, "acme", acme.approver.email, acme.approver.password, acme.approver.totpSecret);
+  await staffLogin(approver, "acme", acme.approver.email, seededPassword(acme.approver.email), seededTotpSecret(acme.approver.email));
 });
 afterAll(() => vi.useRealTimers());
 
 async function approvedToken(runId: string) {
   advance(31);
-  const res = await approver.json(approvePOST, `/api/tenants/acme/runs/${runId}/approve`, { code: totpNow(acme.approver.totpSecret) }, { tenantId: "acme", runId });
+  const res = await approver.json(approvePOST, `/api/tenants/acme/runs/${runId}/approve`, { code: totpNow(seededTotpSecret(acme.approver.email)) }, { tenantId: "acme", runId });
   expect(res.status).toBe(200);
   return (await res.json()).approvalToken as string;
 }
@@ -49,7 +49,7 @@ async function approvedToken(runId: string) {
 const start = async (runId: string, approvalToken: string) =>
   startRun(await mintAsBff("engine.startRun", "acme"), { tenantId: "acme", runId, approvalToken });
 
-describe("a forced failure mid-computation", () => {
+describe("[L2-02] [L2-01 DiD] a forced failure mid-computation", () => {
   it("leaves no partial results and a clear failed state; re-approval then completes the run once", async () => {
     const runId = randomUUID();
     const { hrAdminId } = idsFor("acme");

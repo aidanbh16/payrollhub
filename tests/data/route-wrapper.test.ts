@@ -14,7 +14,7 @@ import { scanRouteSource, scanRoutes } from "../helpers/route-scan";
 const call = (handler: ReturnType<typeof route.public>, init?: RequestInit) =>
   handler(new NextRequest("http://localhost:3000/api/x", init as never), { params: Promise.resolve({}) });
 
-describe("every route uses the wrapper (scan test)", () => {
+describe("[L2-04] every route uses the wrapper (scan test)", () => {
   it("all route files under app/ are built by route.session, route.service, or route.public", () => {
     const { files, violations } = scanRoutes();
     expect(files).toEqual(
@@ -55,7 +55,7 @@ describe("every route uses the wrapper (scan test)", () => {
   });
 });
 
-describe("strict schemas are required when a route is defined", () => {
+describe("[L2-04] strict schemas are required when a route is defined", () => {
   const handler = () => ({});
 
   it("rejects a non-strict body schema (unknown fields would be silently dropped)", () => {
@@ -112,7 +112,7 @@ describe("error responses never leak internals", () => {
 
   it("validation errors name the field but never echo the submitted value", async () => {
     const handler = route.public({ body: { type: "json", schema: z.strictObject({ payDate: z.iso.date() }) }, handler: () => ({}) });
-    const res = await call(handler, { method: "POST", body: JSON.stringify({ payDate: "secret-value-123" }), headers: { "content-type": "application/json" } });
+    const res = await call(handler, { method: "POST", body: JSON.stringify({ payDate: "secret-value-123" }), headers: { "content-type": "application/json", origin: "http://localhost:3000" } });
     expect(res.status).toBe(400);
     const text = await res.text();
     expect(text).toContain("payDate");
@@ -121,13 +121,13 @@ describe("error responses never leak internals", () => {
 
   it("a malformed JSON body gets a generic 400", async () => {
     const handler = route.public({ body: { type: "json", schema: z.strictObject({ a: z.string() }) }, handler: () => ({}) });
-    const res = await call(handler, { method: "POST", body: "{not json", headers: { "content-type": "application/json" } });
+    const res = await call(handler, { method: "POST", body: "{not json", headers: { "content-type": "application/json", origin: "http://localhost:3000" } });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid request body" });
   });
 });
 
-describe("cross-site requests are refused (Origin and Fetch Metadata)", () => {
+describe("[L0-01 DiD] [L2-11 DiD] cross-site requests are refused (Origin and Fetch Metadata)", () => {
   const post = route.public({ handler: async () => ({ ok: true }) });
   const call = (headers: Record<string, string>) =>
     post(new NextRequest("http://localhost:3000/api/x", { method: "POST", headers }), { params: Promise.resolve({}) }).then((r) => r.status);
@@ -135,7 +135,15 @@ describe("cross-site requests are refused (Origin and Fetch Metadata)", () => {
   it("allows the browser's own same-origin posts, including Origin: null under Referrer-Policy: no-referrer", async () => {
     expect(await call({ origin: "http://localhost:3000", "sec-fetch-site": "same-origin" })).toBe(200);
     expect(await call({ origin: "null", "sec-fetch-site": "same-origin" })).toBe(200);
-    expect(await call({})).toBe(200); // not a browser: no Origin, no Fetch Metadata
+  });
+
+  it("without Fetch Metadata, falls back to Origin: allowed only when it names this origin, never silently (D39)", async () => {
+    expect(await call({ origin: "http://localhost:3000" })).toBe(200); // older browser, or a client that sends Origin
+    expect(await call({})).toBe(403); // neither header: refused, not assumed safe
+    expect(await call({ origin: "null" })).toBe(403); // opaque origin, or an older browser under no-referrer
+    expect(await call({ origin: "https://evil.example" })).toBe(403);
+    expect(await call({ origin: "http://localhost:3000.evil.example" })).toBe(403);
+    expect(await call({ origin: "http://localhost:3001" })).toBe(403);
   });
 
   it("refuses cross-site, same-site-but-other-origin, sandboxed, and mismatched requests", async () => {

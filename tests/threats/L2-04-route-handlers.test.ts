@@ -5,7 +5,7 @@ import { POST as createRunPOST } from "@/app/api/tenants/[tenantId]/runs/route";
 import { POST as idpLoginPOST } from "@/app/mock-idp/[tenantId]/login/route";
 import { POST as ssoCallbackPOST } from "@/app/api/auth/sso/[tenantId]/callback/route";
 import { withTenant } from "@/data/db/tenant-scope";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { getPayrollRun } from "@/services/engine/repository";
 import { rawSqlite, setupSeededDatabase } from "../helpers/database";
 import { Browser, advance, staffLogin, useFakeClock } from "../helpers/http";
@@ -29,15 +29,15 @@ let globexRunId: string;
 beforeAll(async () => {
   useFakeClock();
   acmeAdmin = new Browser();
-  await staffLogin(acmeAdmin, "acme", acme.hrAdmin.email, acme.hrAdmin.password, acme.hrAdmin.totpSecret);
+  await staffLogin(acmeAdmin, "acme", acme.hrAdmin.email, seededPassword(acme.hrAdmin.email), seededTotpSecret(acme.hrAdmin.email));
   globexAdmin = new Browser();
-  await staffLogin(globexAdmin, "globex", globex.hrAdmin.email, globex.hrAdmin.password, globex.hrAdmin.totpSecret);
+  await staffLogin(globexAdmin, "globex", globex.hrAdmin.email, seededPassword(globex.hrAdmin.email), seededTotpSecret(globex.hrAdmin.email));
   const created = await globexAdmin.json(createRunPOST, "/api/tenants/globex/runs", { payDate: PAY_DATE }, { tenantId: "globex" });
   globexRunId = (await created.json()).runId;
 });
 afterAll(() => vi.useRealTimers());
 
-describe("L2-04: the tenant comes only from the verified session", () => {
+describe("[L2-04] the tenant comes only from the verified session", () => {
   it("creates the run in the session's tenant (control case)", async () => {
     const res = await acmeAdmin.json(createRunPOST, "/api/tenants/acme/runs", { payDate: PAY_DATE }, { tenantId: "acme" });
     expect(res.status).toBe(201);
@@ -99,7 +99,7 @@ describe("L2-04: the tenant comes only from the verified session", () => {
     expect((await employee.json(createRunPOST, "/api/tenants/acme/runs", { payDate: PAY_DATE }, { tenantId: "acme" })).status).toBe(403);
   });
 
-  it("rejects a pay date too soon for the day-early schedule with a plain message", async () => {
+  it("[L0-11 DiD] rejects a pay date too soon for the day-early schedule with a plain message", async () => {
     const res = await acmeAdmin.json(createRunPOST, "/api/tenants/acme/runs", { payDate: "2026-10-17" }, { tenantId: "acme" });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/at least two days from today/);

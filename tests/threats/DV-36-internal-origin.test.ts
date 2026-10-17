@@ -7,7 +7,7 @@ import { parseEnv } from "@/config/env";
 const base = { ...process.env };
 const withOrigin = (origin: string) => () => parseEnv({ ...base, INTERNAL_API_ORIGIN: origin });
 
-describe("DV-36: INTERNAL_API_ORIGIN must be a loopback address", () => {
+describe("[L1-19 DiD] DV-36: INTERNAL_API_ORIGIN must be a loopback address", () => {
   it("accepts loopback origins", () => {
     for (const origin of ["http://127.0.0.1:3000", "http://127.8.9.10:4000", "http://localhost:3000", "https://localhost", "http://[::1]:3000"]) {
       expect(withOrigin(origin)().INTERNAL_API_ORIGIN).toBe(origin);

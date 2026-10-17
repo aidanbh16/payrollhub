@@ -66,7 +66,7 @@ async function expectRejected(tenantId: string, assertion: string) {
   expect(sessionCount()).toBe(before);
 }
 
-describe("L1-20: SSO assertions are validated before any session is created", () => {
+describe("[L1-20] SSO assertions are validated before any session is created", () => {
   it("accepts a genuine assertion from the tenant's IdP (control case)", async () => {
     const assertion = await sign(claims());
     expect((await verifySsoAssertion("acme", assertion))?.subject).toBe(alice);
@@ -129,7 +129,7 @@ describe("L1-20: SSO assertions are validated before any session is created", ()
   });
 });
 
-describe("L1-20: an assertion can be used only once", () => {
+describe("[L1-20 DiD] an assertion can be used only once", () => {
   beforeAll(() => useFakeClock());
   afterAll(() => vi.useRealTimers());
 
@@ -168,7 +168,7 @@ describe("L1-20: an assertion can be used only once", () => {
   });
 });
 
-describe("end to end through the stand-in IdP and the callback route", () => {
+describe("[L1-20] end to end through the stand-in IdP and the callback route", () => {
   it("IdP sign-in posts a signed assertion that the callback turns into an employee session", async () => {
     const browser = new Browser();
     const idp = await browser.post(idpLoginPOST, "/mock-idp/acme/login", { email: "alice@acme.test", password: SEED_TENANTS[0].employees[0].idpPassword }, { tenantId: "acme" });

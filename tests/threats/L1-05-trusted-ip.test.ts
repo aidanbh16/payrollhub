@@ -13,7 +13,7 @@ vi.hoisted(() => {
 const PER_IP = LIMITS.perIp.login.max;
 const fresh = () => `${randomUUID()}@acme.test`;
 
-describe("L1-05 with a trusted client-IP header", () => {
+describe("[L1-05] with a trusted client-IP header", () => {
   it("a rotating-IP attack on one account still hits the per-account ceiling", async () => {
     const email = fresh();
     const results = await verdicts(times(LIMITS.unknownDevice.free + 5, (i) => () => staffLogin(email, { "x-real-ip": `203.0.113.${i + 1}` })));

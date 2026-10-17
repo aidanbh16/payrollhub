@@ -6,7 +6,7 @@ import { getAchBatchForRun, insertAchBatch } from "@/services/ach/repository";
 import { getAccountChange, insertAccountChange, listVerifiedAccounts } from "@/services/bank-account/repository";
 import { insertPayrollRun } from "@/services/engine/repository";
 import { getTotpSecret } from "@/services/identity/repository";
-import { SEED_TENANTS } from "@/scripts/lib/seed";
+import { SEED_TENANTS, seededTotpSecret } from "@/scripts/lib/seed";
 import { idsFor, rawSqlite, setupSeededDatabase } from "../helpers/database";
 
 // Routing numbers, account numbers, TOTP secrets, and the ACH file body are encrypted at rest (D15).
@@ -24,7 +24,7 @@ function databaseBytes(): Buffer {
   return Buffer.concat([readFileSync(path), existsSync(`${path}-wal`) ? readFileSync(`${path}-wal`) : Buffer.alloc(0)]);
 }
 
-describe("encryption at rest", () => {
+describe("[L2-12 DiD] encryption at rest", () => {
   it("writes a pending change and an ACH batch that contain full bank numbers", () => {
     const acme = idsFor("acme");
     withTenant("acme", (s) => {
@@ -46,7 +46,7 @@ describe("encryption at rest", () => {
     const bytes = databaseBytes();
     const secrets = [
       ...SEED_TENANTS.flatMap((t) => t.employees.flatMap((e) => [e.routingNumber, e.accountNumber])),
-      ...SEED_TENANTS.flatMap((t) => [t.hrAdmin.totpSecret, t.approver.totpSecret]),
+      ...SEED_TENANTS.flatMap((t) => [seededTotpSecret(t.hrAdmin.email), seededTotpSecret(t.approver.email)]),
       CHANGE.routingNumber,
       CHANGE.accountNumber,
       ACH_ACCOUNT,
@@ -65,7 +65,7 @@ describe("encryption at rest", () => {
       expect(accounts.map((a) => a.accountNumber).sort()).toEqual(SEED_TENANTS[0].employees.map((e) => e.accountNumber).sort());
       expect(getAccountChange(s, changeId)).toMatchObject(CHANGE);
       expect(getAchBatchForRun(s, runId)?.fileBody).toContain(ACH_ACCOUNT);
-      expect(getTotpSecret(s, hrAdminId)).toBe(SEED_TENANTS[0].hrAdmin.totpSecret);
+      expect(getTotpSecret(s, hrAdminId)).toBe(seededTotpSecret(SEED_TENANTS[0].hrAdmin.email));
     });
   });
 
