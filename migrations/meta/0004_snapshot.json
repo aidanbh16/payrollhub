@@ -1,0 +1,1297 @@
+{
+  "id": "a1a33d61-23a5-4950-8e6b-ad3a9c5d60f6",
+  "prevId": "3417e7ee-82a6-4eb9-bdc7-e50714ec82d5",
+  "version": "6",
+  "dialect": "sqlite",
+  "tables": {
+    "ach_batch": {
+      "name": "ach_batch",
+      "columns": {
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "file_body": {
+          "name": "file_body",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "signature": {
+          "name": "signature",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "signing_key_version": {
+          "name": "signing_key_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "ach_batch_run": {
+          "name": "ach_batch_run",
+          "columns": [
+            "run_id"
+          ],
+          "isUnique": true
+        },
+        "ach_batch_idempotency_key": {
+          "name": "ach_batch_idempotency_key",
+          "columns": [
+            "idempotency_key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "ach_batch_run_fk": {
+          "name": "ach_batch_run_fk",
+          "tableFrom": "ach_batch",
+          "columnsFrom": [
+            "tenant_id",
+            "run_id"
+          ],
+          "tableTo": "payroll_run",
+          "columnsTo": [
+            "tenant_id",
+            "run_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "ach_batch_status_check": {
+          "name": "ach_batch_status_check",
+          "value": "\"ach_batch\".\"status\" IN ('built', 'signed', 'sent', 'rejected')"
+        }
+      }
+    },
+    "app_user": {
+      "name": "app_user",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mfa_enrolled": {
+          "name": "mfa_enrolled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sso_subject": {
+          "name": "sso_subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "totp_secret": {
+          "name": "totp_secret",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "totp_last_used_step": {
+          "name": "totp_last_used_step",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "app_user_tenant_key": {
+          "name": "app_user_tenant_key",
+          "columns": [
+            "tenant_id",
+            "user_id"
+          ],
+          "isUnique": true
+        },
+        "app_user_tenant_email": {
+          "name": "app_user_tenant_email",
+          "columns": [
+            "tenant_id",
+            "email"
+          ],
+          "isUnique": true
+        },
+        "app_user_tenant_sso_subject": {
+          "name": "app_user_tenant_sso_subject",
+          "columns": [
+            "tenant_id",
+            "sso_subject"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "app_user_tenant_fk": {
+          "name": "app_user_tenant_fk",
+          "tableFrom": "app_user",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenant",
+          "columnsTo": [
+            "tenant_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "app_user_role_check": {
+          "name": "app_user_role_check",
+          "value": "\"app_user\".\"role\" IN ('hr_admin', 'approver', 'employee')"
+        },
+        "app_user_status_check": {
+          "name": "app_user_status_check",
+          "value": "\"app_user\".\"status\" IN ('active', 'disabled')"
+        },
+        "app_user_password_check": {
+          "name": "app_user_password_check",
+          "value": "(\"app_user\".\"role\" = 'employee' AND \"app_user\".\"password_hash\" IS NULL) OR (\"app_user\".\"role\" <> 'employee' AND \"app_user\".\"password_hash\" IS NOT NULL)"
+        },
+        "app_user_mfa_check": {
+          "name": "app_user_mfa_check",
+          "value": "\"app_user\".\"role\" = 'employee' OR (\"app_user\".\"mfa_enrolled\" = 1 AND \"app_user\".\"totp_secret\" IS NOT NULL)"
+        }
+      }
+    },
+    "approval_token": {
+      "name": "approval_token",
+      "columns": {
+        "token_id": {
+          "name": "token_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "issued_to": {
+          "name": "issued_to",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key_version": {
+          "name": "key_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "redeemed_at": {
+          "name": "redeemed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "approval_token_run_fk": {
+          "name": "approval_token_run_fk",
+          "tableFrom": "approval_token",
+          "columnsFrom": [
+            "tenant_id",
+            "run_id"
+          ],
+          "tableTo": "payroll_run",
+          "columnsTo": [
+            "tenant_id",
+            "run_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "approval_token_issued_to_fk": {
+          "name": "approval_token_issued_to_fk",
+          "tableFrom": "approval_token",
+          "columnsFrom": [
+            "tenant_id",
+            "issued_to"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "approval_token_expiry_check": {
+          "name": "approval_token_expiry_check",
+          "value": "\"approval_token\".\"expires_at\" > \"approval_token\".\"issued_at\""
+        }
+      }
+    },
+    "bank_account": {
+      "name": "bank_account",
+      "columns": {
+        "bank_account_id": {
+          "name": "bank_account_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "routing_number": {
+          "name": "routing_number",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_number": {
+          "name": "account_number",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_last4": {
+          "name": "account_last4",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "bank_account_tenant_key": {
+          "name": "bank_account_tenant_key",
+          "columns": [
+            "tenant_id",
+            "bank_account_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "bank_account_employee_fk": {
+          "name": "bank_account_employee_fk",
+          "tableFrom": "bank_account",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "tableTo": "employee",
+          "columnsTo": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "bank_account_status_check": {
+          "name": "bank_account_status_check",
+          "value": "\"bank_account\".\"status\" IN ('verified', 'retired')"
+        },
+        "bank_account_last4_check": {
+          "name": "bank_account_last4_check",
+          "value": "length(\"bank_account\".\"account_last4\") = 4"
+        }
+      }
+    },
+    "bank_account_change": {
+      "name": "bank_account_change",
+      "columns": {
+        "change_id": {
+          "name": "change_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "new_routing_number": {
+          "name": "new_routing_number",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "new_account_number": {
+          "name": "new_account_number",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "bank_account_change_tenant_key": {
+          "name": "bank_account_change_tenant_key",
+          "columns": [
+            "tenant_id",
+            "change_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "bank_account_change_employee_fk": {
+          "name": "bank_account_change_employee_fk",
+          "tableFrom": "bank_account_change",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "tableTo": "employee",
+          "columnsTo": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "bank_account_change_requested_by_fk": {
+          "name": "bank_account_change_requested_by_fk",
+          "tableFrom": "bank_account_change",
+          "columnsFrom": [
+            "tenant_id",
+            "requested_by"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "bank_account_change_status_check": {
+          "name": "bank_account_change_status_check",
+          "value": "\"bank_account_change\".\"status\" IN ('pending', 'confirmed', 'rejected')"
+        }
+      }
+    },
+    "employee": {
+      "name": "employee",
+      "columns": {
+        "employee_id": {
+          "name": "employee_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "full_name": {
+          "name": "full_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pay_rate_cents": {
+          "name": "pay_rate_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "employee_tenant_key": {
+          "name": "employee_tenant_key",
+          "columns": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "isUnique": true
+        },
+        "employee_tenant_user": {
+          "name": "employee_tenant_user",
+          "columns": [
+            "tenant_id",
+            "user_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "employee_user_fk": {
+          "name": "employee_user_fk",
+          "tableFrom": "employee",
+          "columnsFrom": [
+            "tenant_id",
+            "user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "employee_status_check": {
+          "name": "employee_status_check",
+          "value": "\"employee\".\"status\" IN ('active', 'terminated')"
+        },
+        "employee_pay_rate_check": {
+          "name": "employee_pay_rate_check",
+          "value": "\"employee\".\"pay_rate_cents\" > 0"
+        }
+      }
+    },
+    "pay_result": {
+      "name": "pay_result",
+      "columns": {
+        "result_id": {
+          "name": "result_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "bank_account_id": {
+          "name": "bank_account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "gross_pay_cents": {
+          "name": "gross_pay_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "net_pay_cents": {
+          "name": "net_pay_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "pay_result_run_employee": {
+          "name": "pay_result_run_employee",
+          "columns": [
+            "run_id",
+            "employee_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "pay_result_run_fk": {
+          "name": "pay_result_run_fk",
+          "tableFrom": "pay_result",
+          "columnsFrom": [
+            "tenant_id",
+            "run_id"
+          ],
+          "tableTo": "payroll_run",
+          "columnsTo": [
+            "tenant_id",
+            "run_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "pay_result_employee_fk": {
+          "name": "pay_result_employee_fk",
+          "tableFrom": "pay_result",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "tableTo": "employee",
+          "columnsTo": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "pay_result_bank_account_fk": {
+          "name": "pay_result_bank_account_fk",
+          "tableFrom": "pay_result",
+          "columnsFrom": [
+            "tenant_id",
+            "bank_account_id"
+          ],
+          "tableTo": "bank_account",
+          "columnsTo": [
+            "tenant_id",
+            "bank_account_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "pay_result_amount_check": {
+          "name": "pay_result_amount_check",
+          "value": "\"pay_result\".\"net_pay_cents\" >= 0 AND \"pay_result\".\"net_pay_cents\" <= \"pay_result\".\"gross_pay_cents\""
+        }
+      }
+    },
+    "payroll_run": {
+      "name": "payroll_run",
+      "columns": {
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pay_date": {
+          "name": "pay_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scheduled_run_date": {
+          "name": "scheduled_run_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "approved_by": {
+          "name": "approved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "payroll_run_tenant_key": {
+          "name": "payroll_run_tenant_key",
+          "columns": [
+            "tenant_id",
+            "run_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "payroll_run_created_by_fk": {
+          "name": "payroll_run_created_by_fk",
+          "tableFrom": "payroll_run",
+          "columnsFrom": [
+            "tenant_id",
+            "created_by"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "payroll_run_approved_by_fk": {
+          "name": "payroll_run_approved_by_fk",
+          "tableFrom": "payroll_run",
+          "columnsFrom": [
+            "tenant_id",
+            "approved_by"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "payroll_run_status_check": {
+          "name": "payroll_run_status_check",
+          "value": "\"payroll_run\".\"status\" IN ('draft', 'approved', 'computed', 'disbursed', 'failed')"
+        },
+        "payroll_run_day_early_check": {
+          "name": "payroll_run_day_early_check",
+          "value": "\"payroll_run\".\"scheduled_run_date\" = date(\"payroll_run\".\"pay_date\", '-1 day')"
+        }
+      }
+    },
+    "service_grant": {
+      "name": "service_grant",
+      "columns": {
+        "grant_id": {
+          "name": "grant_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "calling_service": {
+          "name": "calling_service",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_endpoint": {
+          "name": "target_endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "service_grant_target": {
+          "name": "service_grant_target",
+          "columns": [
+            "calling_service",
+            "target_endpoint",
+            "scope"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "session": {
+      "name": "session",
+      "columns": {
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "device_binding": {
+          "name": "device_binding",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mfa_verified_at": {
+          "name": "mfa_verified_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "session_user_fk": {
+          "name": "session_user_fk",
+          "tableFrom": "session",
+          "columnsFrom": [
+            "tenant_id",
+            "user_id"
+          ],
+          "tableTo": "app_user",
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "sso_assertion": {
+      "name": "sso_assertion",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "assertion_id": {
+          "name": "assertion_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "sso_assertion_tenant_fk": {
+          "name": "sso_assertion_tenant_fk",
+          "tableFrom": "sso_assertion",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenant",
+          "columnsTo": [
+            "tenant_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "sso_assertion_tenant_id_assertion_id_pk": {
+          "columns": [
+            "tenant_id",
+            "assertion_id"
+          ],
+          "name": "sso_assertion_tenant_id_assertion_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "tenant": {
+      "name": "tenant",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "withholding_rate_bp": {
+          "name": "withholding_rate_bp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "tenant_status_check": {
+          "name": "tenant_status_check",
+          "value": "\"tenant\".\"status\" IN ('active', 'suspended')"
+        },
+        "tenant_withholding_check": {
+          "name": "tenant_withholding_check",
+          "value": "\"tenant\".\"withholding_rate_bp\" BETWEEN 0 AND 10000"
+        }
+      }
+    },
+    "tenant_idp_config": {
+      "name": "tenant_idp_config",
+      "columns": {
+        "idp_config_id": {
+          "name": "idp_config_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "issuer": {
+          "name": "issuer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "audience": {
+          "name": "audience",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "signing_cert": {
+          "name": "signing_cert",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cert_expires_at": {
+          "name": "cert_expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "tenant_idp_config_tenant": {
+          "name": "tenant_idp_config_tenant",
+          "columns": [
+            "tenant_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "tenant_idp_config_tenant_fk": {
+          "name": "tenant_idp_config_tenant_fk",
+          "tableFrom": "tenant_idp_config",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenant",
+          "columnsTo": [
+            "tenant_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "verification_code": {
+      "name": "verification_code",
+      "columns": {
+        "code_id": {
+          "name": "code_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "change_id": {
+          "name": "change_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code_hash": {
+          "name": "code_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "verification_code_change_fk": {
+          "name": "verification_code_change_fk",
+          "tableFrom": "verification_code",
+          "columnsFrom": [
+            "tenant_id",
+            "change_id"
+          ],
+          "tableTo": "bank_account_change",
+          "columnsTo": [
+            "tenant_id",
+            "change_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}
