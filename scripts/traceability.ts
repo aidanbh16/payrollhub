@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { THREATS, type Threat } from "@/tests/threat-registry";
-import { ROOT, listPlaywright, listVitest, playwrightSpecs, runPlaywright, vitestBin } from "./lib/test-runner";
+import { ROOT, VITEST_PROJECTS, listPlaywright, listVitest, playwrightSpecs, runPlaywright, vitestBin } from "./lib/test-runner";
 
 // Threat-to-test traceability (Layer 10). Reads the threat tags from every vitest and Playwright test (as the runners
 // collect them, so describe nesting and generated tests count correctly) and fails when:
@@ -53,12 +53,15 @@ function collect(withResults: boolean): TestCase[] {
   let vitest: { name: string; file: string; ok?: boolean }[];
   let e2e: { name: string; file: string; ok?: boolean }[];
   if (withResults) {
-    const out = join(scratch, "vitest.json");
-    spawnSync(process.execPath, [vitestBin, "run", "--reporter=default", "--reporter=json", `--outputFile.json=${out}`], { cwd: ROOT, stdio: "inherit" });
-    const report = JSON.parse(readFileSync(out, "utf8")) as { testResults: { name: string; assertionResults: { ancestorTitles: string[]; title: string; status: string }[] }[] };
-    vitest = report.testResults.flatMap((f) =>
-      f.assertionResults.map((a) => ({ name: [...a.ancestorTitles, a.title].join(" > "), file: f.name.slice(ROOT.length + 1).replace(/\\/g, "/"), ok: a.status === "passed" })),
-    );
+    // As npm test does: the parallel project, then the isolated one on its own.
+    vitest = VITEST_PROJECTS.flatMap((project) => {
+      const out = join(scratch, `vitest-${project}.json`);
+      spawnSync(process.execPath, [vitestBin, "run", "--project", project, "--reporter=default", "--reporter=json", `--outputFile.json=${out}`], { cwd: ROOT, stdio: "inherit" });
+      const report = JSON.parse(readFileSync(out, "utf8")) as { testResults: { name: string; assertionResults: { ancestorTitles: string[]; title: string; status: string }[] }[] };
+      return report.testResults.flatMap((f) =>
+        f.assertionResults.map((a) => ({ name: [...a.ancestorTitles, a.title].join(" > "), file: f.name.slice(ROOT.length + 1).replace(/\\/g, "/"), ok: a.status === "passed" })),
+      );
+    });
     if (flags.has("--e2e")) {
       const pwOut = join(scratch, "playwright.json");
       runPlaywright([], ["--reporter=list,json"], { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: pwOut });

@@ -46,12 +46,28 @@ function run(bin: string, args: string[], env: NodeJS.ProcessEnv = process.env):
   return spawnSync(process.execPath, [bin, ...args], { cwd: ROOT, stdio: "inherit", env }).status ?? 1;
 }
 
+/** The vitest projects (vitest.config.ts): every test file in parallel, then the latency comparisons on their own. */
+export const VITEST_PROJECTS = ["parallel", "isolated"] as const;
+type VitestProject = (typeof VITEST_PROJECTS)[number];
+const inProject = (project: VitestProject, file: string) => file.startsWith("tests/isolated/") === (project === "isolated");
+
+/** npm test: the parallel project, then the isolated one (npm run test:isolated), one after the other. */
 export function runVitest(ids: string[], rest: string[]): number {
-  if (ids.length === 0) return run(BIN.vitest, ["run", ...rest]);
-  const selected = filesWithTags("tests", /\.test\.ts$/, ids);
+  const statuses = VITEST_PROJECTS.map((project) => runVitestProject(project, ids, rest));
+  return statuses.find((s) => s !== 0) ?? 0;
+}
+
+export function runVitestProject(project: VitestProject, ids: string[], rest: string[]): number {
+  console.log(`\n=== vitest project "${project}"${project === "isolated" ? " (latency comparisons, run alone)" : ""} ===`);
+  // Extra arguments may name files of only one project; the other then has nothing to run, which is not a failure.
+  const lenient = rest.length > 0 ? ["--passWithNoTests"] : [];
+  if (ids.length === 0) return run(BIN.vitest, ["run", "--project", project, ...lenient, ...rest]);
+  const tagged = filesWithTags("tests", /\.test\.ts$/, ids);
+  const selected = tagged.filter((f) => inProject(project, f));
   console.log(`Threat ${ids.join(", ")}: ${selected.length} test file(s), filtered to tests tagged ${ids.map((id) => `[${id}] or [${id} DiD]`).join(", ")}`);
-  if (selected.length === 0) return 1;
-  return run(BIN.vitest, ["run", ...selected, "-t", tagPattern(ids), ...rest]);
+  if (tagged.length === 0) return 1;
+  if (selected.length === 0) return 0;
+  return run(BIN.vitest, ["run", "--project", project, ...selected, "-t", tagPattern(ids), ...rest]);
 }
 
 export function runPlaywright(ids: string[], rest: string[], env?: NodeJS.ProcessEnv, build = true): number {

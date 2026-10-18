@@ -13,6 +13,7 @@
     "db:seed": "tsx --env-file=.env --conditions=react-server scripts/seed.ts",
     "db:reset": "tsx --env-file=.env --conditions=react-server scripts/reset.ts",
     "test": "tsx scripts/run-tests.ts vitest",
+    "test:isolated": "tsx scripts/run-tests.ts isolated",
     "keys:rotate": "tsx --env-file=.env --conditions=react-server scripts/rotate-key.ts",
     "bank": "tsx --env-file=.env --conditions=react-server scripts/mock-bank.ts",
     "totp": "tsx --env-file=.env --conditions=react-server scripts/totp.ts",

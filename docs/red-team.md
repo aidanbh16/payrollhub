@@ -102,6 +102,36 @@ reproductions, then the obvious variations, and reported PASS (the attack no lon
 - **RT-16 (Info):** with the placeholder Redis password, `next start` prints "Ready" just before the configuration
   check exits it. Accepted.
 
+## A reversed decision: the L0-01 timing test (Turns 14 to 16)
+
+Not a red-team finding. It is recorded here because the agent's mistake was caught the same way: by data, not by
+explanation.
+
+- **Turn 14:** under parallel load, the sign-in timing test (`[L0-01 DiD]`, step 1 must take similar time whatever was
+  wrong) once measured a 2.4x ratio. The build agent changed it to interleave its samples. It said back-to-back sampling
+  had produced a false ratio and that interleaving kept the paths within about 10%. The author accepted the change on
+  that explanation.
+- **Turn 15:** asked for the raw timings, the agent measured both methods. On a quiet machine they matched (1.03 to
+  1.06). Under full-suite load the original method gave 1.10 to 1.24 and the interleaved one 1.23 to 2.03, the reverse
+  of the Turn 14 claim. The agent reported the contradiction.
+- **Turn 16:** the author reversed the Turn 14 acceptance (D55). The original sampling is back. The test now runs on
+  its own, after the parallel tests (`npm run test:isolated`, part of `npm test`), so load from other test files cannot
+  affect it. The threshold and the assertion are unchanged.
+
+## A test gap found in Turn 16: L2-01's atomic redemption
+
+While the demo was being prepared, the build agent repeated a Layer 5 mutation check: it removed the
+`redeemed_at IS NULL` condition from `redeemApprovalToken` (`services/approval/repository.ts`). In Layer 5 that made
+the replay tests fail. In Turn 16 the whole suite still passed (278 of 278). Layer 6 had added a second check: a token
+is redeemed only while its run is "approved", and a replayed token is normally refused there first. The atomic
+condition was still in the code, but no test showed that it mattered.
+
+There is one path where only the token record stops a replay. A run fails while it is being computed, which burns its
+token. The same approver then approves the run again. The burned token is still signed and unexpired, it names the
+same tenant, run, and approver, and the run is "approved" again. The new test in `tests/threats/L2-02-engine-failure.test.ts`
+(`[L2-01]`) replays it there. It fails with the condition removed and passes with it in place. No application code
+changed.
+
 ## AI-agent scope incidents
 
 The reviewers were AI agents with written briefs. Two did not keep to them:

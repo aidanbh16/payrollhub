@@ -16,6 +16,7 @@ import { stepUp } from "@/services/identity/step-up";
 import { proxy } from "@/proxy";
 import { rawSqlite, setupSeededDatabase } from "../helpers/database";
 import { Browser, advance, location, staffLogin, totpNow, useFakeClock } from "../helpers/http";
+import { wrongLoginAttempts } from "../helpers/login-attempts";
 
 // L0-01 (High): HR Admin account takeover with no MFA.
 // Primary control: required TOTP MFA for HR Admin and Payroll Approver, enforced by the Data Access Layer
@@ -215,19 +216,10 @@ describe("[L0-01 DiD] session revocation and lifetime", () => {
 });
 
 describe("[L0-01 DiD] generic login failures", () => {
-  // A function, not a constant: the password comes from the credentials file, which exists only after the seed.
-  const attempts = () => ({
-    "unknown organization": { organization: "initech", email: admin.email, password: seededPassword(admin.email) },
-    "unknown email": { organization: "acme", email: "nobody@acme.test", password: seededPassword(admin.email) },
-    "wrong password": { organization: "acme", email: admin.email, password: "Wrong-Password-1!" },
-    "employee (SSO only)": { organization: "acme", email: "alice@acme.test", password: seededPassword(admin.email) },
-    "malformed organization": { organization: "../ACME", email: admin.email, password: seededPassword(admin.email) },
-  });
-
   it("every wrong field produces the same responses at both steps", async () => {
     advance(31);
     const shapes = new Set<string>();
-    for (const form of Object.values(attempts())) {
+    for (const form of Object.values(wrongLoginAttempts())) {
       const browser = new Browser();
       const step1 = await browser.post(loginPOST, "/api/auth/login", form);
       const step2 = await browser.post(mfaPOST, "/api/auth/mfa", { code: totpNow(seededTotpSecret(admin.email)) });
@@ -242,23 +234,7 @@ describe("[L0-01 DiD] generic login failures", () => {
     expect([...shapes]).toEqual([JSON.stringify([303, "/login/mfa", "cleared", 303, "/login?error=signin"])]);
   });
 
-  it("step 1 takes similar time whether the organization, email, or password was wrong", async () => {
-    const correct = { organization: "acme", email: admin.email, password: seededPassword(admin.email) };
-    const forms = [correct, ...Object.values(attempts())];
-    // Three rounds, each timing every path once: the paths take turns, so a change in machine load (other test files
-    // running in parallel) affects them all alike instead of whichever path happened to be measured last.
-    const samples = forms.map(() => [] as number[]);
-    for (let round = 0; round < 3; round++) {
-      for (const [i, form] of forms.entries()) {
-        const start = performance.now();
-        await new Browser().post(loginPOST, "/api/auth/login", form);
-        samples[i].push(performance.now() - start);
-      }
-    }
-    const durations = samples.map((s) => Math.min(...s));
-    // Every path runs exactly one scrypt verification (~tens of ms), so no path is several times faster.
-    expect(Math.max(...durations) / Math.min(...durations)).toBeLessThan(2);
-  });
+  // The timing comparison for these paths runs on its own, outside the parallel suite: tests/isolated/L0-01-login-timing.test.ts.
 
   it("refuses a cross-origin login post", async () => {
     const res = await new Browser().post(loginPOST, "/api/auth/login", { organization: "acme", email: admin.email, password: seededPassword(admin.email) }, {}, { origin: "https://evil.example" });

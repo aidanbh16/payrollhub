@@ -6,7 +6,7 @@ import { withTenant } from "@/data/db/tenant-scope";
 import { SEED_TENANTS, seededPassword, seededTotpSecret } from "@/scripts/lib/seed";
 import { startRun } from "@/services/engine/engine-service";
 import { insertPayrollRun } from "@/services/engine/repository";
-import { RunFailedError } from "@/services/errors";
+import { ApprovalRejectedError, RunFailedError } from "@/services/errors";
 import { idsFor, rawSqlite, setupSeededDatabase } from "../helpers/database";
 import { Browser, advance, staffLogin, totpNow, useFakeClock } from "../helpers/http";
 
@@ -79,5 +79,33 @@ describe("[L2-02] [L2-01 DiD] a forced failure mid-computation", () => {
     const outcome = await start(runId, again);
     expect(outcome).toMatchObject({ status: "computed", employeesPaid: 3 });
     expect(q("SELECT count(*) AS n FROM pay_result WHERE run_id = ?", runId)).toEqual({ n: 3 });
+  });
+});
+
+describe("[L2-01] the atomic redemption is the only thing stopping a burned token", () => {
+  // Found in Turn 16: with the redeemed_at guard removed from redeemApprovalToken, every other test still passed,
+  // because a replay is normally refused earlier (the run is no longer "approved"). Here it is approved again, by the
+  // same approver, with the same content, so the token's record is the only thing that knows it was already used.
+  it("a token burned by a failed run cannot start the run once the same approver has approved it again", async () => {
+    const runId = randomUUID();
+    const { hrAdminId } = idsFor("acme");
+    withTenant("acme", (s) => insertPayrollRun(s, { runId, payDate: "2026-12-04", status: "draft", createdBy: hrAdminId, approvedBy: null }));
+    const burned = await approvedToken(runId);
+
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    failure.calls = 0;
+    failure.failOnCall = 1;
+    await expect(start(runId, burned)).rejects.toMatchObject({ reason: "computation_error" });
+    log.mockRestore();
+    failure.failOnCall = 0;
+
+    const fresh = await approvedToken(runId);
+    expect(q("SELECT status, approved_by FROM payroll_run WHERE run_id = ?", runId)).toMatchObject({ status: "approved" });
+    // The burned token is still signed, unexpired, for this tenant, run, and approver, and the content is unchanged.
+    await expect(start(runId, burned)).rejects.toBeInstanceOf(ApprovalRejectedError);
+    expect(q("SELECT status FROM payroll_run WHERE run_id = ?", runId)).toEqual({ status: "approved" });
+    expect(q("SELECT count(*) AS n FROM pay_result WHERE run_id = ?", runId)).toEqual({ n: 0 });
+
+    expect(await start(runId, fresh)).toMatchObject({ status: "computed", employeesPaid: 3 });
   });
 });

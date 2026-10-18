@@ -100,8 +100,9 @@ Then start the app with `TRUSTED_CLIENT_IP_HEADER=x-real-ip` (and `npm run start
 
 `npm run submission -- <new folder>` (needs git) copies every file git would include (tracked files, plus new files
 that `.gitignore` does not exclude) into the folder, then checks that no dependency, build output, `.git`, `.env`,
-`.data/` content, database, log, key, certificate, or credentials file is in it. ZIP that folder. Before submitting,
-extract the ZIP into a clean folder and follow the README from the start.
+`.data/` content, database, log, key, certificate, or credentials file is in it. It also leaves out the author's
+presentation outline and code walkthrough (D56). ZIP the folder's contents, so that `README.md` is at the root of the
+ZIP. Before submitting, extract the ZIP into a clean folder and follow the README from the start.
 
 ## Serving to other machines
 

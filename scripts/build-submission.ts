@@ -6,7 +6,8 @@ import { dirname, join, relative, resolve } from "node:path";
 //   npm run submission -- <empty target folder>
 // It copies every file git would include (tracked files, plus new files that .gitignore does not exclude), so
 // node_modules, .env, .data/ (database, keys, certificates, logs, credentials), .next, and .git never go in. Then it
-// checks the result against that list again and exits 1 if anything forbidden is there.
+// checks the result against that list again and exits 1 if anything forbidden is there. The author's presentation
+// material (NOT_SUBMITTED) is in the repository but never in the ZIP (D56).
 
 const ROOT = join(import.meta.dirname, "..");
 const target = process.argv[2] && resolve(process.argv[2]);
@@ -19,9 +20,13 @@ if (existsSync(target) && readdirSync(target).length > 0) {
   process.exit(1);
 }
 
+/** Kept in the repository for the author, left out of the ZIP (D56). */
+const NOT_SUBMITTED = ["docs/presentation-outline.md", "docs/code-walkthrough.md"];
+
 const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: ROOT, encoding: "utf8" })
   .split("\0")
-  .filter((f) => f && existsSync(join(ROOT, f))); // a tracked file deleted in the working tree is left out
+  .filter((f) => f && existsSync(join(ROOT, f))) // a tracked file deleted in the working tree is left out
+  .filter((f) => !NOT_SUBMITTED.includes(f));
 for (const file of files) {
   mkdirSync(dirname(join(target, file)), { recursive: true });
   copyFileSync(join(ROOT, file), join(target, file));
@@ -41,6 +46,7 @@ const FORBIDDEN: [RegExp, string][] = [
   [/credentials/i, "credentials"],
   [/(^|\/)(test-results|playwright-report|coverage)(\/|$)/, "test output"],
   [/\.tsbuildinfo$/, "build cache"],
+  [/^docs\/(presentation-outline|code-walkthrough)\.md$/, "presentation material (D56)"],
 ];
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -58,4 +64,4 @@ if (real.length) {
   console.error(`Refusing: the submission folder contains:\n${real.map((b) => `  ${b}`).join("\n")}`);
   process.exit(1);
 }
-console.log(`Copied ${files.length} files to ${target}. None of them is a dependency, build output, git data, .env, runtime data, database, log, key, certificate, or credentials file.`);
+console.log(`Copied ${files.length} files to ${target}. None of them is a dependency, build output, git data, .env, runtime data, database, log, key, certificate, or credentials file, or presentation material.`);
